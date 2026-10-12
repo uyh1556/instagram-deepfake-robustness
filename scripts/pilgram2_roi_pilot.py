@@ -342,7 +342,7 @@ def evaluate(args, protocol):
         delta.to_csv(args.output_root / "baseline_deltas.csv", index=False)
     print(pd.DataFrame(aggregate).to_string(index=False), flush=True)
 
-def main():
+def main(protocol_override=None):
     p = argparse.ArgumentParser()
     p.add_argument("action", choices=["prepare", "train", "evaluate"])
     for name in ("data-root", "manifest", "checkpoint", "cache-root"):
@@ -366,7 +366,7 @@ def main():
     for n in ("train_per_method", "val_per_method", "test_per_method", "workers"):
         assert getattr(args,n) >= 0, n
     assert args.epochs > 0 and args.batch_size > 0 and args.learning_rate > 0
-    protocol = json.loads(args.protocol.read_text())
+    protocol = protocol_override if protocol_override is not None else json.loads(args.protocol.read_text())
     assert all(callable(getattr(pilgram2, name, None)) for name in protocol["filters"])
     if args.action == "prepare": prepare(args, protocol)
     elif args.action == "train": train(args, protocol)

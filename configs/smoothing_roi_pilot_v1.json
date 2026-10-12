@@ -1,0 +1,13 @@
+{
+  "name": "smoothing_roi_pilot_v1",
+  "filters": ["smooth_weak", "smooth_medium", "smooth_strong"],
+  "strengths": {"smooth_weak": 0.25, "smooth_medium": 0.5, "smooth_strong": 0.75},
+  "bilateral": {"diameter": 0, "sigma_color_rgb255": 35, "sigma_space_roi_fraction": 0.02},
+  "mask": "ROI-relative feathered ellipse; broad eye/mouth exclusions; geometric approximation, not segmentation; undetected ROI left unchanged",
+  "filter_order": "RGB -> frozen native ROI -> masked bilateral blend -> existing bicubic299 -> normalization; lossless PNG, no extra JPEG",
+  "training_target": "random one of three strengths per paired train view; identical probability for real/fake; DANN masks target class labels",
+  "validation": "original validation ROC-AUC only; fixed 3 epochs",
+  "evaluation": "same test subset, normal + all three strengths; AUC/FPR/FNR at threshold0.5",
+  "generalization_claim": "Synthetic smoothing pilot, NOT official Instagram or unseen-strength generalization",
+  "implementation": "smoothing_roi_pilot.py v1; OpenCV bilateralFilter"
+}
