@@ -1,0 +1,41 @@
+{
+  "name": "pilgram2_roi_pilot_v1",
+  "sampling_seed": 42,
+  "candidate_filters": [
+    "clarendon",
+    "gingham",
+    "moon",
+    "lark",
+    "reyes",
+    "juno",
+    "slumber",
+    "crema",
+    "ludwig",
+    "aden",
+    "perpetua",
+    "amaro",
+    "mayfair",
+    "rise",
+    "hudson",
+    "valencia",
+    "xpro2",
+    "sierra",
+    "inkwell",
+    "hefe",
+    "nashville"
+  ],
+  "filters": [
+    "nashville",
+    "lark",
+    "clarendon",
+    "ludwig",
+    "crema"
+  ],
+  "filter_strength": "library default, no interpolation with original",
+  "filter_order": "full-frame RGB -> pilgram2 -> frozen ROI crop -> original bicubic resize299 -> normalization",
+  "training_target": "paired transformations of train images, labels masked in DANN target loss",
+  "validation": "original val only; maximum original ROC-AUC checkpoint; fixed 3 epochs",
+  "evaluation": "same frozen test subset; normal and all five adaptation filters; threshold0.5",
+  "generalization_claim": "No unseen-filter claim: all five filters occur in adaptation training",
+  "pilgram2_version": "2.0.10"
+}

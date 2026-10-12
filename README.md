@@ -51,4 +51,6 @@ Face ROI 모델은 `manifests/ffpp_c0_face_roi_v1/manifest.csv`를 사용합니�
 
 ## 현재 상태
 
+필터 평가·DANN 파일럿: `notebooks/pilot_roi_pilgram2_5filters_da_seed42.ipynb`와 `docs/colab/pilgram2_roi_pilot_v1.md`. 새 Colab에서 저장소를 clone하며 코드 ZIP 업로드는 필요하지 않습니다. 실행 의존성은 `requirements-pilot.txt`입니다.
+
 이미지·manifest·체크포인트·기존 평가 결과를 복사하고 경로·개수·체크포인트 로딩·manifest 해시·TAR 구성원을 확인했습니다. 새 필터 평가나 학습은 아직 수행하지 않았습니다. 대용량 TAR의 Drive 업로드는 사용자에게 넘겼습니다.

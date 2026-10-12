@@ -1,0 +1,2 @@
+-r requirements-colab.txt
+pilgram2==2.0.10
