@@ -50,3 +50,17 @@ V1은 추출에 포함하지 않는다. 원본 ZIP/영상과 data 출력을 Git�
 prepare_celebdf_v2_face_roi.py detect/export와 docs/celebdf_v2_face_roi.md를 준비했다.
 원본에서 검출한 1.5배 ROI를 보정 전후 동일하게 사용한다. 얼굴 검출 실패는 기존 fallback 유지.
 ROI 생성/실제 Celeb-DF crop 실행은 아직 요청하지 않았으므로 자동 실행하지 않는다.
+
+## Celeb-DF 완료 및 UDA 파일럿 준비 확인 (2026-10-13)
+사용자 요청으로 V2 전체 frame extraction과1.5x face crop export를 완료했다.
+summary와 파일 수를 확인:6529영상,104449PNG. 1프레임짜리 real영상1개 때문에 예상보다15장이 적다.
+얼굴 검출101520장, fallback2929장 유지. 크롭PNG 총6825244679bytes.
+전체 TAR는 test8288 / non_test_real11377 / non_test_fake84784로 분리해 생성·검증했다.
+추가 self-contained pilot TAR에 FF++ source3000/val900과 Celeb target1200/test8288을 넣었다.
+target은 공식 test와 filename celebrity IDs가 겹치지 않는 id59/id60/id61만 사용한다.
+Target class labels를 adaptation manifest에서 제거했다. YouTube-real identity는 미확인이다.
+스크립트celebdf_smoothing_uda_pilot.py에서 baseline/source_ft/source_aug/uda_normal/uda_smoothing 비교.
+기존 FF++ ROI best에서 각3epochs, source validation AUC로만 best 선택한다.
+native crop에서 smoothing25/50/75% -> 기존299 resize/normalize. Target/test는 재크롭하지 않는다.
+local tiny CPU prepare/train/evaluate20조건을 점검했다. 전체GPU 성능 실험은 아직 수행하지 않았다.
+pilot TAR1139773440bytes, 전체13388장. 기존 대형 TAR를 추가로 해제할 필요가 없다.
