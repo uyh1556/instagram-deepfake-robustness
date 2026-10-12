@@ -1,0 +1,61 @@
+Normal
+Fade
+Fade warm
+Fade cool
+Simple
+Simple warm
+Simple cool
+Boost
+Boost warm
+Boost cool
+Graphite
+Hyper
+Rosy
+Emerald
+Midnight
+Grainy
+Gritty
+Halo
+Color leak
+Soft light
+Zoom blur
+Handheld
+Moire
+Lo-res
+Wide angle
+Wavy
+Paris
+Los Angeles
+Oslo
+Melbourne
+Jakarta
+Abu Dhabi
+Buenos Aires
+New York
+Jaipur
+Cairo
+Tokyo
+Rio De Janeiro
+Clarendon
+Gingham
+Moon
+Lark
+Reyes
+Juno
+Slumber
+Crema
+Ludwig
+Aden
+Perpetua
+Amaro
+Mayfair
+Rise
+Hudson
+Valencia
+X-Pro 2
+Sierra
+Willo
+Lo-Fi
+Inkwell
+Hefe
+Nashville

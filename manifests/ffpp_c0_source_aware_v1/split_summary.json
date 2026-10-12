@@ -1,0 +1,39 @@
+{
+  "input_root": "source_images_raw",
+  "output_root": "dataset_split/source_aware",
+  "seed": 42,
+  "ratios": {
+    "train": 0.7,
+    "val": 0.15,
+    "test": 0.15
+  },
+  "storage": "symlink",
+  "total_groups": 494,
+  "total_images": 27529,
+  "splits": {
+    "train": {
+      "groups": 346,
+      "images": 19267,
+      "real": 6419,
+      "fake": 12848,
+      "Deepfakes": 6421,
+      "Face2Face": 6427
+    },
+    "val": {
+      "groups": 74,
+      "images": 4130,
+      "real": 1380,
+      "fake": 2750,
+      "Deepfakes": 1368,
+      "Face2Face": 1382
+    },
+    "test": {
+      "groups": 74,
+      "images": 4132,
+      "real": 1382,
+      "fake": 2750,
+      "Deepfakes": 1369,
+      "Face2Face": 1381
+    }
+  }
+}

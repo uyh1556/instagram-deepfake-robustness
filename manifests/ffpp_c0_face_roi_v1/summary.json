@@ -1,0 +1,54 @@
+{
+  "created_at_utc": "2026-09-09T14:53:27.141371+00:00",
+  "source_manifest": "/content/project/dataset_split/source_aware/manifest.csv",
+  "source_manifest_sha256": "3deca3de17f28e9be112e9e6f884fecaaf99fddccaa88355ce3737ef4ea13496",
+  "roi_manifest": "/content/drive/MyDrive/deepfake_thesis/manifests/face_roi_mtcnn_1p5_v1/manifest.csv",
+  "roi_manifest_sha256": "00c5d1e97b245a73a64aa2446595a37153d66d6dfe113cb82df1076a44a5e162",
+  "images": 27529,
+  "status_counts": {
+    "detected": 27411,
+    "fallback_letterbox": 118
+  },
+  "detection_rate": 0.9957136111010207,
+  "fallback_rate": 0.004286388898979254,
+  "padding_required_count": 3016,
+  "face_confidence": {
+    "mean": 0.9933978957377687,
+    "min": 0.9005486369132996,
+    "max": 1.0
+  },
+  "by_split": {
+    "test": {
+      "images": 4132,
+      "detected": 4119,
+      "fallback": 13
+    },
+    "train": {
+      "images": 19267,
+      "detected": 19170,
+      "fallback": 97
+    },
+    "val": {
+      "images": 4130,
+      "detected": 4122,
+      "fallback": 8
+    }
+  },
+  "by_method": {
+    "Deepfakes": {
+      "images": 9158,
+      "detected": 9122,
+      "fallback": 36
+    },
+    "Face2Face": {
+      "images": 9190,
+      "detected": 9147,
+      "fallback": 43
+    },
+    "original": {
+      "images": 9181,
+      "detected": 9142,
+      "fallback": 39
+    }
+  }
+}

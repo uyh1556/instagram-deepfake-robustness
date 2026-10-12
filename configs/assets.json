@@ -1,0 +1,359 @@
+{
+  "schema_version": 1,
+  "prepared_date": "2026-10-12",
+  "source_repository": "https://github.com/uyh1556/social-media-deepfake-detection",
+  "source_commit": "fec8c6be7fc37cfff3677c4572dfb46e90b5accc",
+  "dataset": {
+    "name": "ffpp_c0_v1",
+    "representation": "Full-frame PNGs previously extracted from FF++ raw/c0; not original video files",
+    "data_root": "data/ffpp_c0_v1",
+    "source_prefix": "source_images_raw",
+    "methods": {
+      "original": "real",
+      "Deepfakes": "fake",
+      "Face2Face": "fake"
+    },
+    "total_images": 27529,
+    "counts": {
+      "train": {
+        "original": 6419,
+        "Deepfakes": 6421,
+        "Face2Face": 6427
+      },
+      "test": {
+        "original": 1382,
+        "Deepfakes": 1369,
+        "Face2Face": 1381
+      },
+      "val": {
+        "original": 1380,
+        "Deepfakes": 1368,
+        "Face2Face": 1382
+      }
+    },
+    "base_manifest_sha256": "3deca3de17f28e9be112e9e6f884fecaaf99fddccaa88355ce3737ef4ea13496",
+    "roi_manifest_sha256": "00c5d1e97b245a73a64aa2446595a37153d66d6dfe113cb82df1076a44a5e162",
+    "image_path_and_size_match": true,
+    "roi_rows_match_base": true,
+    "models": [
+      {
+        "name": "ffpp_c0_xception_standard_seed42",
+        "checkpoint_sha256": "e6d6e6713a37658ca2db9e15c180eb68d456fa5b4b5163ae04b4d61433d51b5e",
+        "manifest_sha256": "3deca3de17f28e9be112e9e6f884fecaaf99fddccaa88355ce3737ef4ea13496",
+        "epoch": 2,
+        "model_state_loaded": true
+      },
+      {
+        "name": "ffpp_c0_xception_letterbox_seed42",
+        "checkpoint_sha256": "31a209d3b91ab7ab84e2830fffe0461cbffda6fa9bb8abfdcb5ffd3362a74fa6",
+        "manifest_sha256": "3deca3de17f28e9be112e9e6f884fecaaf99fddccaa88355ce3737ef4ea13496",
+        "epoch": 8,
+        "model_state_loaded": true
+      },
+      {
+        "name": "ffpp_c0_xception_face_roi_seed42",
+        "checkpoint_sha256": "224e517250cd03645ca9b55a72e2d58f6d51d763791cb77fb2a0151ed5a76f24",
+        "manifest_sha256": "00c5d1e97b245a73a64aa2446595a37153d66d6dfe113cb82df1076a44a5e162",
+        "epoch": 3,
+        "model_state_loaded": true
+      }
+    ],
+    "archives": [
+      {
+        "name": "ffpp_c0_original_v1.tar",
+        "images": 9181,
+        "size_bytes": 6574468608,
+        "members_verified": true
+      },
+      {
+        "name": "ffpp_c0_deepfakes_v1.tar",
+        "images": 9158,
+        "size_bytes": 6558830080,
+        "members_verified": true
+      },
+      {
+        "name": "ffpp_c0_face2face_v1.tar",
+        "images": 9190,
+        "size_bytes": 6586378240,
+        "members_verified": true
+      }
+    ]
+  },
+  "manifests": {
+    "standard_and_letterbox": "manifests/ffpp_c0_source_aware_v1/manifest.csv",
+    "face_roi": "manifests/ffpp_c0_face_roi_v1/manifest.csv",
+    "bytes_preserved": true
+  },
+  "drive": {
+    "root_url": "https://drive.google.com/drive/folders/1BDyboyTlm4aKiJ0LLJDkRknAfWXZZwxx",
+    "folder_ids": {
+      "drive_root_id": "1BDyboyTlm4aKiJ0LLJDkRknAfWXZZwxx",
+      "drive_data": "12zM_D7MgSxQWMzOaVxslHaUQkltCD0au",
+      "drive_dataset": "1rfSWqk2dk6b2MDVJgl-9wLbnaj_x5V8u",
+      "drive_manifests": "1Z6wA9kwnZX1ACLHtrWGjDaWnC1sJWSM4",
+      "drive_source_manifest": "1fxutjXVPEHKwdpZrKl0wa5t8UErp4W1v",
+      "drive_roi_manifest": "1K5fhYrH_ynAzyPr8RKpVAGduGc5nDZ2W",
+      "drive_checkpoints": "1CIRZ3-xXi-kvedveDzUISuSU-w-a_4_m",
+      "drive_standard_model": "1UnacXH3aY3oEOcvMO75k4ljkdZEBo_HB",
+      "drive_letterbox_model": "1U74CjdkBcS3ICHqxyK-hsiQHuD2Bui4U",
+      "drive_roi_model": "1uTAdp-FsGCbKHq0TGUJAQEJvi4vxxi9Z",
+      "drive_evaluations": "1m03lBnSyvZ_YGqqzMsLdf_FEPrNVN5nW",
+      "drive_docs": "1zKmfCVm7BsFo5y-v4xc9t8EilQC_gG4T"
+    },
+    "data_archive_upload_status": "user_upload_pending",
+    "connector_single_file_limit_bytes": 536870912
+  },
+  "imported_drive_files": [
+    {
+      "group": "drive_standard_model",
+      "name": "test_metrics.json",
+      "id": "13d3vCiOYS_gFFsP9Y4HlzPZa663OMRw8",
+      "source_id": "1QN-rX2NaI5GFckle4SlijrHtGu3b-5cW",
+      "source_url": "https://drive.google.com/file/d/1QN-rX2NaI5GFckle4SlijrHtGu3b-5cW/view?usp=drivesdk",
+      "url": "https://drive.google.com/file/d/13d3vCiOYS_gFFsP9Y4HlzPZa663OMRw8/view?usp=drivesdk",
+      "size": 1461,
+      "local_relative_path": "checkpoints/ffpp_c0_xception_standard_seed42/test_metrics.json"
+    },
+    {
+      "group": "drive_standard_model",
+      "name": "history.csv",
+      "id": "1YcOKV1nHtQHwjW3nk00hNhH7Px9JDk-y",
+      "source_id": "13iC4vO94PHsSaPk98anL-BcBfxEGLYOI",
+      "source_url": "https://drive.google.com/file/d/13iC4vO94PHsSaPk98anL-BcBfxEGLYOI/view?usp=drivesdk",
+      "url": "https://drive.google.com/file/d/1YcOKV1nHtQHwjW3nk00hNhH7Px9JDk-y/view?usp=drivesdk",
+      "size": 933,
+      "local_relative_path": "checkpoints/ffpp_c0_xception_standard_seed42/history.csv"
+    },
+    {
+      "group": "drive_standard_model",
+      "name": "history.json",
+      "id": "1S_omAp3Fv_Oh2J0fzi61gCrY5ARqkHkJ",
+      "source_id": "1Y1mGsQzJmNWZoRZqesqbMQ1YelU-QoZZ",
+      "source_url": "https://drive.google.com/file/d/1Y1mGsQzJmNWZoRZqesqbMQ1YelU-QoZZ/view?usp=drivesdk",
+      "url": "https://drive.google.com/file/d/1S_omAp3Fv_Oh2J0fzi61gCrY5ARqkHkJ/view?usp=drivesdk",
+      "size": 7004,
+      "local_relative_path": "checkpoints/ffpp_c0_xception_standard_seed42/history.json"
+    },
+    {
+      "group": "drive_standard_model",
+      "name": "best.pt",
+      "id": "1o5I6NiftdVsQjLWwztSWmLlzwuqPSGZS",
+      "source_id": "1Ve8yunmtM4JV8KoP8R6BDF5bT3KfJXti",
+      "source_url": "https://drive.google.com/file/d/1Ve8yunmtM4JV8KoP8R6BDF5bT3KfJXti/view?usp=drivesdk",
+      "url": "https://drive.google.com/file/d/1o5I6NiftdVsQjLWwztSWmLlzwuqPSGZS/view?usp=drivesdk",
+      "size": 250172015,
+      "local_relative_path": "checkpoints/ffpp_c0_xception_standard_seed42/best.pt"
+    },
+    {
+      "group": "drive_standard_model",
+      "name": "config.json",
+      "id": "1vDoiInUoE4ojTQ7DIrDN2VlxhuGahUx2",
+      "source_id": "1gtm3auzuBqvd5_ZUJdeg3zuumOiZwAVn",
+      "source_url": "https://drive.google.com/file/d/1gtm3auzuBqvd5_ZUJdeg3zuumOiZwAVn/view?usp=drivesdk",
+      "url": "https://drive.google.com/file/d/1vDoiInUoE4ojTQ7DIrDN2VlxhuGahUx2/view?usp=drivesdk",
+      "size": 1487,
+      "local_relative_path": "checkpoints/ffpp_c0_xception_standard_seed42/config.json"
+    },
+    {
+      "group": "drive_letterbox_model",
+      "name": "history.json",
+      "id": "1IQzgsoBY3VMSoiuBm0oJ2rC1PFVzz21R",
+      "source_id": "10iwGfTHXHjWWpa7xE2jce_W4-kk1zKUg",
+      "source_url": "https://drive.google.com/file/d/10iwGfTHXHjWWpa7xE2jce_W4-kk1zKUg/view?usp=drivesdk",
+      "url": "https://drive.google.com/file/d/1IQzgsoBY3VMSoiuBm0oJ2rC1PFVzz21R/view?usp=drivesdk",
+      "size": 15415,
+      "local_relative_path": "checkpoints/ffpp_c0_xception_letterbox_seed42/history.json"
+    },
+    {
+      "group": "drive_letterbox_model",
+      "name": "history.csv",
+      "id": "1O2twLYwV2VHu7sBfW0ynBlsKLcU6Ww8N",
+      "source_id": "1Ep4rSCsDdfm0C3dt2vv7niIg558TosZT",
+      "source_url": "https://drive.google.com/file/d/1Ep4rSCsDdfm0C3dt2vv7niIg558TosZT/view?usp=drivesdk",
+      "url": "https://drive.google.com/file/d/1O2twLYwV2VHu7sBfW0ynBlsKLcU6Ww8N/view?usp=drivesdk",
+      "size": 1888,
+      "local_relative_path": "checkpoints/ffpp_c0_xception_letterbox_seed42/history.csv"
+    },
+    {
+      "group": "drive_letterbox_model",
+      "name": "best.pt",
+      "id": "12hfopwSe1OtzGkwOjgy3Q5k0r6H1SVZ_",
+      "source_id": "1NHLruK0Pxo295Hl05vu9sqZcE4-fdlXn",
+      "source_url": "https://drive.google.com/file/d/1NHLruK0Pxo295Hl05vu9sqZcE4-fdlXn/view?usp=drivesdk",
+      "url": "https://drive.google.com/file/d/12hfopwSe1OtzGkwOjgy3Q5k0r6H1SVZ_/view?usp=drivesdk",
+      "size": 250176815,
+      "local_relative_path": "checkpoints/ffpp_c0_xception_letterbox_seed42/best.pt"
+    },
+    {
+      "group": "drive_letterbox_model",
+      "name": "config.json",
+      "id": "1kZCGGsclA2r8_R6odDYP0Pb39MJCr2gi",
+      "source_id": "1eMMDpgKK2F2cN4-z1iaRa9iT9rZAW82L",
+      "source_url": "https://drive.google.com/file/d/1eMMDpgKK2F2cN4-z1iaRa9iT9rZAW82L/view?usp=drivesdk",
+      "url": "https://drive.google.com/file/d/1kZCGGsclA2r8_R6odDYP0Pb39MJCr2gi/view?usp=drivesdk",
+      "size": 2178,
+      "local_relative_path": "checkpoints/ffpp_c0_xception_letterbox_seed42/config.json"
+    },
+    {
+      "group": "drive_roi_model",
+      "name": "config.json",
+      "id": "1IWiPntO8zc_6B0l-SP53dIG-YbaNYuVW",
+      "source_id": "1r1AMraks6jgqG-sz_aXyACxRNwgHR12z",
+      "source_url": "https://drive.google.com/file/d/1r1AMraks6jgqG-sz_aXyACxRNwgHR12z/view?usp=drivesdk",
+      "url": "https://drive.google.com/file/d/1IWiPntO8zc_6B0l-SP53dIG-YbaNYuVW/view?usp=drivesdk",
+      "size": 2563,
+      "local_relative_path": "checkpoints/ffpp_c0_xception_face_roi_seed42/config.json"
+    },
+    {
+      "group": "drive_roi_model",
+      "name": "history.csv",
+      "id": "15Os1AgyUllvOOXzWmPUBTOP3jtBDhDr5",
+      "source_id": "1T4WC6u4VcHUuqkDsDT1wOqPdq5h11CQZ",
+      "source_url": "https://drive.google.com/file/d/1T4WC6u4VcHUuqkDsDT1wOqPdq5h11CQZ/view?usp=drivesdk",
+      "url": "https://drive.google.com/file/d/15Os1AgyUllvOOXzWmPUBTOP3jtBDhDr5/view?usp=drivesdk",
+      "size": 1102,
+      "local_relative_path": "checkpoints/ffpp_c0_xception_face_roi_seed42/history.csv"
+    },
+    {
+      "group": "drive_roi_model",
+      "name": "history.json",
+      "id": "1_zNB9HQeD35RYdhudIxNnxDZPSLFRjBz",
+      "source_id": "1HetCKG0aAAfPDewSSjX-hfNQh5Ap3Tmc",
+      "source_url": "https://drive.google.com/file/d/1HetCKG0aAAfPDewSSjX-hfNQh5Ap3Tmc/view?usp=drivesdk",
+      "url": "https://drive.google.com/file/d/1_zNB9HQeD35RYdhudIxNnxDZPSLFRjBz/view?usp=drivesdk",
+      "size": 8375,
+      "local_relative_path": "checkpoints/ffpp_c0_xception_face_roi_seed42/history.json"
+    },
+    {
+      "group": "drive_roi_model",
+      "name": "best.pt",
+      "id": "17CtWvxY43wT-KtxZnGKSOnAuyMHzywBq",
+      "source_id": "1VRpqSpLXqNxVxkzk528Hv8BuK_nB4tQ4",
+      "source_url": "https://drive.google.com/file/d/1VRpqSpLXqNxVxkzk528Hv8BuK_nB4tQ4/view?usp=drivesdk",
+      "url": "https://drive.google.com/file/d/17CtWvxY43wT-KtxZnGKSOnAuyMHzywBq/view?usp=drivesdk",
+      "size": 250175727,
+      "local_relative_path": "checkpoints/ffpp_c0_xception_face_roi_seed42/best.pt"
+    },
+    {
+      "group": "drive_roi_manifest",
+      "name": "summary.json",
+      "id": "1a2cdiUHpt_cWDx_gYGmRAvzYNlgEQGrI",
+      "source_id": "1I8pNvv4b5q7ZGljmrs1O_6oVQS8jfate",
+      "source_url": "https://drive.google.com/file/d/1I8pNvv4b5q7ZGljmrs1O_6oVQS8jfate/view?usp=drivesdk",
+      "url": "https://drive.google.com/file/d/1a2cdiUHpt_cWDx_gYGmRAvzYNlgEQGrI/view?usp=drivesdk",
+      "size": 1337,
+      "local_relative_path": "manifests/ffpp_c0_face_roi_v1/summary.json"
+    },
+    {
+      "group": "drive_roi_manifest",
+      "name": "manifest.csv",
+      "id": "1lCNfniqMksn7jy34bcGZPRo6i7EhQt1C",
+      "source_id": "1Yn8KDXVAmMVfcJy4aVfUy8u5Qe568sIL",
+      "source_url": "https://drive.google.com/file/d/1Yn8KDXVAmMVfcJy4aVfUy8u5Qe568sIL/view?usp=drivesdk",
+      "url": "https://drive.google.com/file/d/1lCNfniqMksn7jy34bcGZPRo6i7EhQt1C/view?usp=drivesdk",
+      "size": 8188804,
+      "local_relative_path": "manifests/ffpp_c0_face_roi_v1/manifest.csv"
+    },
+    {
+      "group": "drive_roi_manifest",
+      "name": "config.json",
+      "id": "1RF0pqsHTDlWEIMM-cYvcoLib7UT4iWNQ",
+      "source_id": "1oK1D1HE1chmgknYJAjoiyAi-1eyapqcz",
+      "source_url": "https://drive.google.com/file/d/1oK1D1HE1chmgknYJAjoiyAi-1eyapqcz/view?usp=drivesdk",
+      "url": "https://drive.google.com/file/d/1RF0pqsHTDlWEIMM-cYvcoLib7UT4iWNQ/view?usp=drivesdk",
+      "size": 1372,
+      "local_relative_path": "manifests/ffpp_c0_face_roi_v1/config.json"
+    },
+    {
+      "group": "drive_raw_eval_0",
+      "name": "metrics.json",
+      "id": "1_7_54eZf__f-qtztw-iXdy4Fg0rhd3iu",
+      "source_id": "1SQT2FdQhaJih4pSc3WUw6B-IoW4gn_k8",
+      "source_url": "https://drive.google.com/file/d/1SQT2FdQhaJih4pSc3WUw6B-IoW4gn_k8/view?usp=drivesdk",
+      "url": "https://drive.google.com/file/d/1_7_54eZf__f-qtztw-iXdy4Fg0rhd3iu/view?usp=drivesdk",
+      "size": 2487,
+      "local_relative_path": "outputs/reference/ffpp_c0_xception_standard_seed42_raw_test_v1/metrics.json"
+    },
+    {
+      "group": "drive_raw_eval_0",
+      "name": "predictions.csv",
+      "id": "17teKh2PVEXKU2_43SRuBI-6lB792cjsy",
+      "source_id": "1lpanBIxdxqdfQS0y_gJNlYajt6XS-k34",
+      "source_url": "https://drive.google.com/file/d/1lpanBIxdxqdfQS0y_gJNlYajt6XS-k34/view?usp=drivesdk",
+      "url": "https://drive.google.com/file/d/17teKh2PVEXKU2_43SRuBI-6lB792cjsy/view?usp=drivesdk",
+      "size": 619448,
+      "local_relative_path": "outputs/reference/ffpp_c0_xception_standard_seed42_raw_test_v1/predictions.csv"
+    },
+    {
+      "group": "drive_raw_eval_1",
+      "name": "metrics.json",
+      "id": "1WbXNHV6VYqPbtc-PR0HRhqUYSZRA1Mbf",
+      "source_id": "1ngpnwHeIw26gzU3V_ZgBU9t9ihDiJBUY",
+      "source_url": "https://drive.google.com/file/d/1ngpnwHeIw26gzU3V_ZgBU9t9ihDiJBUY/view?usp=drivesdk",
+      "url": "https://drive.google.com/file/d/1WbXNHV6VYqPbtc-PR0HRhqUYSZRA1Mbf/view?usp=drivesdk",
+      "size": 2581,
+      "local_relative_path": "outputs/reference/ffpp_c0_xception_letterbox_seed42_raw_test_v1/metrics.json"
+    },
+    {
+      "group": "drive_raw_eval_1",
+      "name": "predictions.csv",
+      "id": "1NfWHaSGAEBY6MQFNVQXnS5w8p4h4Uj-P",
+      "source_id": "1z9f-8kOFWP_AEVj2sDAhMhNWlROcmVk0",
+      "source_url": "https://drive.google.com/file/d/1z9f-8kOFWP_AEVj2sDAhMhNWlROcmVk0/view?usp=drivesdk",
+      "url": "https://drive.google.com/file/d/1NfWHaSGAEBY6MQFNVQXnS5w8p4h4Uj-P/view?usp=drivesdk",
+      "size": 623697,
+      "local_relative_path": "outputs/reference/ffpp_c0_xception_letterbox_seed42_raw_test_v1/predictions.csv"
+    },
+    {
+      "group": "drive_raw_eval_2",
+      "name": "metrics.json",
+      "id": "1DhTgJO6FTksueeEhYWIJ02u-BOkogEc-",
+      "source_id": "1XqsgZ7M44w82U-8CMOhV67ai0Ku4v3lA",
+      "source_url": "https://drive.google.com/file/d/1XqsgZ7M44w82U-8CMOhV67ai0Ku4v3lA/view?usp=drivesdk",
+      "url": "https://drive.google.com/file/d/1DhTgJO6FTksueeEhYWIJ02u-BOkogEc-/view?usp=drivesdk",
+      "size": 2771,
+      "local_relative_path": "outputs/reference/ffpp_c0_xception_face_roi_seed42_raw_test_v1/metrics.json"
+    },
+    {
+      "group": "drive_raw_eval_2",
+      "name": "predictions.csv",
+      "id": "1s4-FCxk1tL6Vj_zDjLKO3ng9BQPnf6h0",
+      "source_id": "1FtcNrU5oox6zgNKOjEM_KkDT4aw0rU3E",
+      "source_url": "https://drive.google.com/file/d/1FtcNrU5oox6zgNKOjEM_KkDT4aw0rU3E/view?usp=drivesdk",
+      "url": "https://drive.google.com/file/d/1s4-FCxk1tL6Vj_zDjLKO3ng9BQPnf6h0/view?usp=drivesdk",
+      "size": 621897,
+      "local_relative_path": "outputs/reference/ffpp_c0_xception_face_roi_seed42_raw_test_v1/predictions.csv"
+    }
+  ],
+  "reused_code": [
+    {
+      "path": "scripts/train_baseline.py",
+      "source_path": "scripts/train_baseline.py",
+      "policy": "Copied unchanged from source_commit"
+    },
+    {
+      "path": "scripts/evaluate_checkpoint.py",
+      "source_path": "scripts/evaluate_checkpoint.py",
+      "policy": "Copied unchanged from source_commit"
+    },
+    {
+      "path": "scripts/xception_preprocessing.py",
+      "source_path": "scripts/xception_preprocessing.py",
+      "policy": "Copied unchanged from source_commit"
+    }
+  ],
+  "preservation": {
+    "source_images_not_changed": true,
+    "source_manifests_not_changed": true,
+    "source_drive_files_copied_not_moved": true,
+    "legacy_configs_retained": true
+  },
+  "verification": {
+    "all_image_paths_and_sizes_match": true,
+    "manifest_bytes_match_source": true,
+    "checkpoint_state_dicts_loaded_strictly": true,
+    "archive_members_and_sizes_match": true,
+    "all_image_content_hashes_checked": false,
+    "new_evaluation_performed": false
+  }
+}
