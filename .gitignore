@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.py[cod]
+.DS_Store
+.env
+.env.*
+!.env.example
+/data/
+/datasets/
+/checkpoints/
+/outputs/
+/results/
+*.pt
+*.pth
+*.ckpt
