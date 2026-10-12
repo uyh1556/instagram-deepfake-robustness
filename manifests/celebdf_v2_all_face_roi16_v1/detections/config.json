@@ -1,0 +1,36 @@
+{
+  "name": "frozen_face_roi_mtcnn_1p5_manifest_v1",
+  "created_at_utc": "2026-10-12T17:26:25.050918+00:00",
+  "source_manifest": "/Users/younghyun/Projects/instagram-deepfake-robustness/manifests/celebdf_v2_all_face_roi16_v1/source_manifest.csv",
+  "source_manifest_sha256": "fb23736d2b5be6516eeaeed2a1a22035c1db004cd2141c657bc515eadf46d6a9",
+  "data_root": "/Users/younghyun/Projects/instagram-deepfake-robustness/data/celebdf_v2_frames16_v1",
+  "rows_are_dropped": false,
+  "bbox_source": "MTCNN detection on unmodified source PNGs only",
+  "target_bbox_policy": "reuse the frozen raw-image normalized ROI; never redetect on Instagram or proxy images",
+  "face_selection": "highest-confidence detection passing the extraction filters",
+  "expansion": 1.5,
+  "roi_shape": "square centered on face bbox",
+  "out_of_frame_policy": "neutral RGB 128 padding",
+  "detection_resize": "preserve aspect ratio; cap longest side at 1024 pixels",
+  "fallback": "full-frame letterbox when no valid detection exists",
+  "detector_filters": {
+    "confidence_min": 0.9,
+    "face_area_ratio_min": 0.02,
+    "face_area_ratio_max": 0.6,
+    "bbox_aspect_ratio_min": 0.5,
+    "bbox_aspect_ratio_max": 2.0,
+    "face_center_y_ratio_max": 0.75
+  },
+  "batch_size": 8,
+  "checkpoint_every": 200,
+  "requested_device": "cpu",
+  "resolved_device": "CPU:0",
+  "versions": {
+    "python": "3.12.8",
+    "numpy": "2.2.6",
+    "pandas": "2.3.3",
+    "pillow": "12.0.0",
+    "tensorflow": "2.20.0",
+    "mtcnn": "1.0.0"
+  }
+}

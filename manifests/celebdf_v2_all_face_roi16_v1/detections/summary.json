@@ -1,0 +1,49 @@
+{
+  "created_at_utc": "2026-10-12T18:19:55.258502+00:00",
+  "source_manifest": "/Users/younghyun/Projects/instagram-deepfake-robustness/manifests/celebdf_v2_all_face_roi16_v1/source_manifest.csv",
+  "source_manifest_sha256": "fb23736d2b5be6516eeaeed2a1a22035c1db004cd2141c657bc515eadf46d6a9",
+  "roi_manifest": "/Users/younghyun/Projects/instagram-deepfake-robustness/manifests/celebdf_v2_all_face_roi16_v1/detections/manifest.csv",
+  "roi_manifest_sha256": "2c0285f189e62ab9d6eb5627086cfda98446114df6bc9f319a8c9bf907c02075",
+  "images": 104449,
+  "status_counts": {
+    "detected": 101520,
+    "fallback_letterbox": 2929
+  },
+  "detection_rate": 0.9719576061044146,
+  "fallback_rate": 0.028042393895585382,
+  "padding_required_count": 4363,
+  "face_confidence": {
+    "mean": 0.9978790425591999,
+    "min": 0.9000546932220459,
+    "max": 1.0
+  },
+  "by_split": {
+    "non_test_pool": {
+      "images": 96161,
+      "detected": 93521,
+      "fallback": 2640
+    },
+    "test": {
+      "images": 8288,
+      "detected": 7999,
+      "fallback": 289
+    }
+  },
+  "by_method": {
+    "Celeb-real": {
+      "images": 9425,
+      "detected": 9118,
+      "fallback": 307
+    },
+    "Celeb-synthesis": {
+      "images": 90224,
+      "detected": 88010,
+      "fallback": 2214
+    },
+    "YouTube-real": {
+      "images": 4800,
+      "detected": 4392,
+      "fallback": 408
+    }
+  }
+}

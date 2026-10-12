@@ -1,0 +1,9 @@
+{
+  "source_manifest_sha256": "fb23736d2b5be6516eeaeed2a1a22035c1db004cd2141c657bc515eadf46d6a9",
+  "scope": "all",
+  "images": 104449,
+  "grouping": "video IDs preserved; identity/source split not yet assigned",
+  "detector": "MTCNN1.0.0; inherited FF++ ROI validation rules",
+  "expansion": 1.5,
+  "fallback": "full-frame letterbox; no rows dropped"
+}

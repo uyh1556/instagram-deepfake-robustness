@@ -13,3 +13,7 @@ __pycache__/
 *.pt
 *.pth
 *.ckpt
+/Celeb-DF/
+/Celeb-DF-v2/
+/Celeb-DF.zip
+/Celeb-DF-v2.zip
