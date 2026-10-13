@@ -131,3 +131,52 @@ Fine-tuned state mismatch를 실제 공개 SELFI 가중치로 로컬 재현: 제
 저장된 학습 key 집합을 먼저 엄격히 검사하고, 공개 frozen ArcFace state와 합쳐 strict=True로 복원하도록 수정했다.
 데이터/학습 손실/모델/전처리 변경 없음. 기존 완료 run과 evaluation을 알려진 코드SHA에 한해 재사용한다.
 이전 수치 수정 코드SHA0d4d235b437c3b86e22a2dcf63ece9f9fd480245a8695afca45208e2ffd63a9c도 호환 대상.
+
+## FF++ c23 native ROI16로 교체 (2026-10-13)
+사용자 승인: 기존 c23 crop 삭제 및 Celeb-DF와 동일한 MTCNN1.5 native ROI, 영상당16프레임으로 재생성.
+scripts/prepare_ffpp_c23_native_roi16.py는 기존 ROI 선택/필터/crop 함수와 rounded linspace를 재사용한다.
+전체 프레임 PNG를 저장하지 않고 영상에서 읽어 native crop만 PNG로 저장. 원본 영상과 source-aware split은 보존.
+Deepfakes/Face2Face 원본은 /Users/younghyun/Downloads/ffpp_c23 아래 각각1000영상 확인.
+Real c23 원본 영상은 확인되지 않았으므로 original 영상 추가 다운로드가 필요하다. 기존 Real crop에서 재생성하지 않는다.
+새 출력 data/ffpp_c23_native_roi16_v1. 1영상 smoke16crop 통과 후 전체 두 기법 처리 session8685 시작.
+완료 여부는 새 metadata/{method}/summary.json 및 crop_manifest.csv로 확인한다. 예약 자동화 없음.
+공간 부족으로 사용자가 재차 명시 승인하여 아래 기존 이미지 폴더를 영구 삭제했다:
+/Users/younghyun/Desktop/Projects/deepfake_project/data/ffpp/c23/df40_preprocessed/Deepfakes/ff/frames
+/Users/younghyun/Desktop/Projects/deepfake_project/data/ffpp/c23/df40_preprocessed/Face2Face/ff/frames
+/Users/younghyun/Desktop/Projects/deepfake_project/data/df40/real/ff/c23/frames
+기존 crop 의존 manifest는 provenance로만 보존하며 로컬 경로는 이제 없을 수 있다. 기존 TAR/metadata/landmarks/checkpoints/c0/new crops는 삭제하지 않았다.
+
+## FaceSwap·NeuralTextures ROI16 추가 (2026-10-13)
+사용자가 새 두 기법의 프레임추출+ROI를 승인했다. Projects/FFPP_c23에 각1000mp4,0-byte없음,임시파일없음 확인.
+Deepfakes complete summary:1000영상/16000crop/fallback1372/PNG2236193955bytes.
+Face2Face session8685는 확인 시940/1000 진행. 완료 summary 확인 후 새 두 기법을 순서대로 실행하는 대기 프로세스를 시작했다.
+기존과 같은 prepare_ffpp_c23_native_roi16.py, source-aware anchor, Celeb-DF ROI 정책 및 새 공통 출력 폴더 사용.
+자동화 예약은 만들지 않음. 실행 중인 정상 처리 프로세스이며 전체 완료 여부는 method summary로 재확인한다.
+
+## Original와 TAR 마무리 및 c0 정리 (2026-10-13)
+Original1000mp4/0-byte없음/임시없음 확인. 사용자 승인으로 NeuralTextures 종료 뒤 Original ROI16 및 TAR 생성 파이프라인 session98582 시작.
+scripts/finish_ffpp_c23_native_roi16.py -> archive_ffpp_c23_native_roi16.py. 기존sourceID split 유지, 미확인source는 excluded로 분리.
+TAR 예정 경로 data/exports/ffpp_c23_4methods_roi16_v1, trainval/test 두 TAR. 공간 검사 실패시 삭제 없이 멈춤.
+확인 당시 Deepfakes16000/fallback1372, Face2Face16000/fallback1275, FaceSwap16000/fallback1326 완료; NeuralTextures 약300영상 진행.
+사용자가 c0 관련 삭제를 명시 요청했다. 새 프로젝트 data/ffpp_c0_v1와 exports/ffpp_c0_{original,deepfakes,face2face}_v1.tar,
+새 프로젝트 checkpoints/ffpp_c0_xception_{standard,face_roi,letterbox}_seed42 및 outputs/reference의 대응 raw_test_v1를 영구 삭제했다.
+이전 프로젝트 /Users/younghyun/Desktop/Projects/deepfake_project/source_images_raw c0 사본도 삭제했다.
+c0 분할manifest와 설정/코드/문헌 및 Drive는 보존. c23/새ROI/Celeb-DF/공개checkpoint는 보존. 과거 c0 로컬 경로는 더 이상 유효하지 않다.
+
+## FF++ c23 Xception·CLIP·DINOv2 baseline 코드/코랩 (2026-10-13)
+사용자 요청으로 모델당1개 코랩, 총3개를 생성했다. scripts/train_ffpp_c23_baseline.py와 requirements-ffpp-c23-training.txt.
+노트북/MD stem: train_ffpp_c23_xception_seed42, train_ffpp_c23_clip_b16_seed42, train_ffpp_c23_dinov2_b14_seed42.
+새 native ROI16 trainval/test TAR 두 개와 inventory.json을 Drive data/ffpp_c23_4methods_roi16_v1에 사용자 업로드 후 사용.
+데이터만 같은 고정 source-aware 분할이며 공식 FF++ split은 아니다. epoch Real:Fake1:1, 네 Fake 기법 균등, 영상 균형 샘플링.
+epoch별 목록은 모델에 의존하지 않고 seed42+epoch*100003으로 고정; 목록hash를 history에 저장한다.
+첫1epoch 분류기만 학습, 이후 Xception 전체 / CLIP 마지막2블록+ln_post+visual projection / DINO 마지막2블록+final LayerNorm을 학습.
+Xception encoder/head LR1e-4; CLIP/DINO encoder1e-5, head1e-4. 최대15epochs, patience4, AdamW, batch16.
+기준 입력: Xception299 Normalize0.5; CLIP224 OpenAI 공식transform; DINO224 direct bicubic + ImageNetmean/std.
+DINO는 facebook/dinov2-base revision f9e44c814b77203eaa57a6bdbbd535f21ede1415, CLS768 -> Linear2, patch14.
+CLIP은 OpenAI visual512 -> Linear2; text encoder/추가featureL2 normalize 없음. 사전학습에서 시작하며 랜덤 대체 없음.
+학습 flip0.5만, validation/test 변형 없음. 최고checkpoint는 FF++ clean validation macro4 frame AUC로 선택.
+BF16지원GPU는BF16, 그 외FP32; FP16사용안함. finite loss/gradient 검사, strict checkpoint load, last epoch재개/완료skip.
+각 코랩에 FF++ test 평가 포함. AUC/FPR/FNR/F1/Accuracy 및 기법별 지표 저장, video지표 없음.
+Celeb-DF/스무딩/augmentation/UDA는 포함하지 않으며 후속 평가/학습 단계로 분리한다.
+tiny합성fixture에서 epoch중단/재개/완료skip/test재사용 검증, 세 백본 architecture·transform·warmup·부분gradient 및18개코드셀 구문 확인.
+실제 공식 DINOv2 가중치 로딩 및224입력 forward/backward도 확인. FF++ GPU정식학습은 아직 실행하지 않았다.
