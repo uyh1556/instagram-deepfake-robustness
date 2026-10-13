@@ -1,0 +1,13 @@
+{
+  "name": "ffpp_c23_celebdf_official_smoothing_v1",
+  "test_images": 8288,
+  "test_videos": 518,
+  "real_images": 2848,
+  "fake_images": 5440,
+  "conditions": {"normal": 0, "smooth_weak": 0.25, "smooth_medium": 0.5, "smooth_strong": 0.75},
+  "bilateral": {"diameter": 0, "sigma_color_rgb255": 35, "sigma_space_roi_fraction": 0.02},
+  "threshold": 0.5,
+  "precision": "FP32",
+  "protocol": "Official Celeb-DF V2 test; identity overlap permitted, evaluation videos/frames excluded from future adaptation. Source-parent relationships need separate audit before UDA.",
+  "smoothing_limit": "Synthetic geometric-mask bilateral smoothing; not the official Instagram algorithm. Native ROI before model-specific resize; fallback unchanged."
+}

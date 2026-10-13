@@ -180,3 +180,13 @@ BF16지원GPU는BF16, 그 외FP32; FP16사용안함. finite loss/gradient 검사
 Celeb-DF/스무딩/augmentation/UDA는 포함하지 않으며 후속 평가/학습 단계로 분리한다.
 tiny합성fixture에서 epoch중단/재개/완료skip/test재사용 검증, 세 백본 architecture·transform·warmup·부분gradient 및18개코드셀 구문 확인.
 실제 공식 DINOv2 가중치 로딩 및224입력 forward/backward도 확인. FF++ GPU정식학습은 아직 실행하지 않았다.
+
+## FF++ 세 baseline의 고정 Celeb-DF 공식 스무딩 평가 (2026-10-14)
+사용자 승인: Celeb-DF 공식 test를 공통 평가로 고정, 같은 인물은 허용하되 같은 영상/프레임은 적응에 사용하지 않는다.
+evaluate_ffpp_baselines_celebdf_smoothing.py 및 동명 평가 Colab/MD 추가. 완료된 FF++ c23 Xception/CLIP/DINO best.pt만 사용.
+공식 test TAR 557015040bytes,518영상/8288장(Real2848/Fake5440) 확인. 원본+기존25/50/75% bilateral 기하마스크 스무딩.
+모델별 기존 전처리 유지, 추가JPEG 없음, fallback변형안함, FP32 추론, frame지표만, threshold0.5.
+평가 manifest/프로토콜/영상제외목록과 checkpoint해시/조건별 예측을 저장하여 향후 동일조건 baseline 재평가를 줄인다.
+원본–조작 영상 연결 중복 검사는 향후 UDA 준비 시 별도 필요하며 완료했다고 주장하지 않는다.
+실제 Colab baseline 학습 완료 및 새로운 smoothing 성능 결과는 아직 원격 파일로 확인하지 않았다.
+로컬 tiny fixture에서 스무딩 생성/추론/완료결과 재사용/fallback 유지/평가영상 목록 저장 통과. 코랩6개 코드셀 구문 검사 통과.
