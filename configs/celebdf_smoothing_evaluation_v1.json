@@ -1,0 +1,14 @@
+{
+  "name": "celebdf_identity_smoothing_evaluation_v1",
+  "conditions": {"normal": 0.0, "smooth_weak": 0.25, "smooth_medium": 0.5, "smooth_strong": 0.75},
+  "bilateral": {"diameter": 0, "sigma_color_rgb255": 35, "sigma_space_roi_fraction": 0.02},
+  "order": "native frozen ROI -> geometric masked bilateral blend -> checkpoint-specific resize/normalization",
+  "fallback": "retain unchanged and report separately; do not re-detect after smoothing",
+  "threshold": 0.5,
+  "claim": "Synthetic smoothing approximation, NOT official Instagram, NOT a new unseen-strength study",
+  "comparison": "frozen best checkpoint; paired same samples; clean baseline reproduction before interpreting changes",
+  "primary": "video AUC and fixed-threshold Real FPR/Fake FNR",
+  "secondary": "frame metrics, detected-only frames, per-video predictions, probability shifts",
+  "bootstrap": "1000 paired stratified video resamples, conditional on the same6 test identities; not an identity-generalization CI",
+  "no_training": true
+}

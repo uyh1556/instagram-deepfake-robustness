@@ -77,3 +77,14 @@ ImageNet Xception299/Normalize0.5와 OpenAI CLIP B16 이미지 인코더224/공�
 15epochs, AdamW, batch16, patience4, best는clean validation video AUC로 선택.
 기존 FF++ detector를 초기값으로 사용하지 않는다. 새manifest 생성은Colab Cell4에서만 실행한다.
 GPU 정식 학습은 아직 실행하지 않았다. Test인물6명 및 기존pilot 평가 노출 한계를 명시한다.
+
+## 원본baseline Drive 결과 및스무딩 평가 준비 (2026-10-13)
+Drive의 두 completed/config/history/test_metrics를 확인했다. 같은manifest hash12b45925896c4f088d2864b1093b8d6b2278c1e5a491783932e7859e4d87fe86.
+Xception epoch9종료/best5, test frameAUC0.99853094,videoAUC1.0,videoFPR/FNR0.
+CLIP epoch8종료/best4, frameAUC0.99530044,videoAUC0.99938272,videoFPR0.18333333/FNR0.
+결과는80/10/10 자체test1824장114영상이며 공식test결과가아니다. 로컬best는아직없고Drive저장확인.
+요청에따라별도evaluate_celebdf_smoothing.py/Colab을준비한다. 두best고정,0.5threshold고정.
+원본및masked bilateral blend25/50/75%,nativecrop에서적용한뒤모델별transform.
+fallback그대로,detected-onlyframe추가지표,pairedvideo1000bootstrap및원본재현check.
+6명고정conditionalvideoCI이며identitygeneralizationCI가아님. UDA/재학습없음.
+실제전체GPU스무딩평가결과는아직없으며Colab에서실행한다. 기존training/smoothing코드는바꾸지않는다.
