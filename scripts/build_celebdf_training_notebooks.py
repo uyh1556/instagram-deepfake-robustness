@@ -7,7 +7,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main():
-    for stem in ['train_celebdf_xception_seed42', 'train_celebdf_clip_b16_seed42', 'evaluate_celebdf_smoothing_seed42']:
+    import sys
+    default=['train_celebdf_xception_seed42', 'train_celebdf_clip_b16_seed42', 'evaluate_celebdf_smoothing_seed42', 'evaluate_recce_ucf_selfi_smoothing']
+    for stem in (sys.argv[1:] or default):
         source = ROOT / 'docs/colab' / f'{stem}.md'
         cells = []
         for i, text in enumerate(re.split(r'^```python\n|^```[ \t]*$', source.read_text(), flags=re.MULTILINE)):

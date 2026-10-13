@@ -88,3 +88,15 @@ CLIP epoch8종료/best4, frameAUC0.99530044,videoAUC0.99938272,videoFPR0.1833333
 fallback그대로,detected-onlyframe추가지표,pairedvideo1000bootstrap및원본재현check.
 6명고정conditionalvideoCI이며identitygeneralizationCI가아님. UDA/재학습없음.
 실제전체GPU스무딩평가결과는아직없으며Colab에서실행한다. 기존training/smoothing코드는바꾸지않는다.
+
+## 공개탐지기평가준비 (2026-10-13)
+사용자요청RECCE+UCF(Xception계열)+SELFI(CLIPB16+ArcFace)를재학습없이추가평가한다.
+RECCE/UCF는DeepfakeBench v1.0.1공개가중치, SELFI는저자계정공개609MBstate_dict.
+세모델전체checkpoint를실제다운로드하고strictloading·CPU추론점검을완료했다.
+RECCE는2-logitDeepfakeBench재현256모델로보정논문의original299/1-logit모델과구분한다.
+SELFI는arXiv2506.17592preprint. 공개YAMLnormalizationImageNetmean/std를따른다.
+SELFIcheckpoint에학습config없음, README FF++c23/YAML FF-NT차이를protocol에명시한다.
+기존MTCNN1.5crop사용으로upstreamalignedcrop과차이있음. 원논문수치재현으로주장하지않는다.
+이번외부모델평가는Celeb-DF공식test518영상/8288frames, 기존자체test114영상과구분.
+코랩직접!python-u로진행률표시, 원본/25·50·75%4조건, 재학습UDA없음.
+전체GPU평가는아직진행하지않았다. setup·prepare·evaluate코랩으로실행예정.

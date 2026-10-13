@@ -1,0 +1,3 @@
+-r requirements-celebdf-smoothing-eval.txt
+transformers==4.46.3
+gdown==5.2.0

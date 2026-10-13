@@ -1,0 +1,44 @@
+{
+  "name": "public_detectors_celebdf_official_smoothing_v1",
+  "dataset": "Celeb-DF V2 official test518videos/8288frames,16uniformframes/video",
+  "recce": {
+    "implementation": "DeepfakeBench reproduction, not original one-logit RECCE paper checkpoint",
+    "repo": "https://github.com/SCLBD/DeepfakeBench.git",
+    "commit": "f188b1c105465e2e5377eb536a95022ae0e4522d",
+    "checkpoint_url": "https://github.com/SCLBD/DeepfakeBench/releases/download/v1.0.1/recce_best.pth",
+    "checkpoint_bytes": 191466941,
+    "checkpoint_sha256": "1349fd80d75cdb2d212f2dc4035529140b147b80ae87ad227242fa0451586ceb",
+    "resolution": 256,
+    "mean": [0.5,0.5,0.5], "std": [0.5,0.5,0.5]
+  },
+  "ucf": {
+    "implementation": "DeepfakeBench UCF ICCV2023, Xception common-forgery inference head",
+    "repo": "https://github.com/SCLBD/DeepfakeBench.git",
+    "commit": "f188b1c105465e2e5377eb536a95022ae0e4522d",
+    "checkpoint_url": "https://github.com/SCLBD/DeepfakeBench/releases/download/v1.0.1/ucf_best.pth",
+    "checkpoint_bytes": 188006161,
+    "checkpoint_sha256": "4afa2517feeb473024e1b73049bfa61ce446eb4da14d17c864f2e2a76b3223e5",
+    "resolution": 256,
+    "mean": [0.5,0.5,0.5], "std": [0.5,0.5,0.5]
+  },
+  "selfi": {
+    "implementation": "author public SELFI CLIP B16 + ArcFace full checkpoint",
+    "repo": "https://github.com/dudgjs0915/SELFI-Selective-Fusion-of-Identity-for-Generalizable-Deepfake-Detection.git",
+    "commit": "c20f256a901d1894e4d96e79534a5b17b23e2795",
+    "checkpoint_drive_id": "18sqiL693IeNRpX1xz4YggCUAcynitxpE",
+    "checkpoint_bytes": 609261352,
+    "checkpoint_sha256": "2b199ff7aca4c679fda2b9dd93d1f83067a4564417bf51f4e59c63b916ab69c9",
+    "resolution": 224,
+    "mean": [0.485,0.456,0.406], "std": [0.229,0.224,0.225],
+    "normalization_source": "published SELFI_clip.yaml; trained checkpoint contains no training config; not plain OpenAI CLIP normalization",
+    "training_provenance_limit": "README describes FF++ c23 training; YAML template lists FF-NT. Exact training subset is not embedded in the raw checkpoint."
+  },
+  "smoothing": {
+    "conditions": {"normal":0,"smooth_weak":0.25,"smooth_medium":0.5,"smooth_strong":0.75},
+    "bilateral": {"diameter":0,"sigma_color_rgb255":35,"sigma_space_roi_fraction":0.02}
+  },
+  "crop_limit": "Reuse existing native MTCNN1.5x crops. Upstream RECCE uses RetinaFace and benchmark/SELFI preprocessing uses aligned crops; this is a paired sensitivity evaluation, not exact paper reproduction.",
+  "threshold": 0.5,
+  "no_training": true,
+  "claim_limit": "External FF++ detector performance not directly ranked against self-trained Celeb-DF models on a different test. Synthetic smoothing, not official Instagram filters."
+}
