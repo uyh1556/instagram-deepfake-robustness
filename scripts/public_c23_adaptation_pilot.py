@@ -25,6 +25,7 @@ STRATEGIES=['source_ft','source_aug','uda_normal','uda_smoothing']
 CONDITIONS=['normal','smooth_weak','smooth_medium','smooth_strong']
 FEATURE_DIMS={'recce':2048,'ucf':256,'selfi':768}
 PRE_REPAIR_SHA='97858e9e26ef2203c7280acee6e69190eb77513db1c92de20e0bfe17b95b1dcd'
+COMPATIBLE_CODE_SHAS={PRE_REPAIR_SHA,'0d4d235b437c3b86e22a2dcf63ece9f9fd480245a8695afca45208e2ffd63a9c'}
 
 
 def run_configuration(args,name,strategy,cfg,public):
@@ -35,11 +36,11 @@ def run_configuration(args,name,strategy,cfg,public):
         if saved!=current:
             old=dict(saved);new=dict(current)
             old_sha=old.pop('code_sha256',None);new.pop('code_sha256',None)
-            if old!=new or old_sha!=PRE_REPAIR_SHA:raise ValueError('Run config differs beyond approved numerical repair')
+            if old!=new or old_sha not in COMPATIBLE_CODE_SHAS:raise ValueError('Run config differs beyond approved compatibility repairs')
             # Preserve original config/checkpoint identities; record the repair separately.
             baseline.json_write(path.parent/'numerical_repair.json',{
                 'original_code_sha256':old_sha,'repair_code_sha256':current['code_sha256'],
-                'policy':'Retry nonfinite AMP loss on same batch in FP32; never skip a batch',
+                'policy':'Same-batch FP32 retry; strict frozen ArcFace + trained-state restoration',
                 'original_config_preserved':True})
             return saved
     return current
@@ -127,9 +128,17 @@ def model_state(name,model):
 
 
 def restore(name,model,state):
-    status=model.load_state_dict(state,strict=False)
-    expected={k for k in model.state_dict() if name=='selfi' and k.startswith('iresnet.')}
-    if set(status.missing_keys)!=expected or status.unexpected_keys:raise ValueError('Fine-tuned state mismatch')
+    full=model.state_dict()
+    frozen={k for k in full if name=='selfi' and k.startswith('iresnet.')}
+    expected=set(full)-frozen
+    missing=sorted(expected-set(state));unexpected=sorted(set(state)-expected)
+    if missing or unexpected:
+        raise ValueError(f'Fine-tuned state mismatch ({name}): missing={missing[:10]}, unexpected={unexpected[:10]}')
+    # Retain public frozen ArcFace tensors, including BatchNorm counters.
+    # Missing num_batches_tracked is silently synthesized by PyTorch under strict=False;
+    # validate saved keys explicitly and instead restore a complete strict state.
+    full.update(state)
+    model.load_state_dict(full,strict=True)
 
 
 def configuration(args,name,strategy,cfg,public):
@@ -250,7 +259,12 @@ def evaluate(args):
                 report,pred_path=prefix.with_suffix('.json'),prefix.with_suffix('.csv')
                 if report.exists() and pred_path.exists():
                     saved=json.loads(report.read_text())
-                    if saved['identity']!=identity:raise ValueError('Saved evaluation differs')
+                    accepted={identity}
+                    if strategy=='baseline':
+                        for code_sha in COMPATIBLE_CODE_SHAS:
+                            previous=dict(config);previous['code_sha256']=code_sha
+                            accepted.add(key({'configuration':previous,'test_manifest_sha256':cfg['test_manifest_sha256']}))
+                    if saved['identity'] not in accepted:raise ValueError('Saved evaluation differs')
                     values=saved['frame'];print('Reuse completed:',name,strategy,condition,flush=True)
                 else:
                     dataset=PilotImages(test,args,transform,public,condition=condition,test=True)

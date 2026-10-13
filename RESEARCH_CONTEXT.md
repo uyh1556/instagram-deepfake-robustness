@@ -124,3 +124,10 @@ FP32도 실패하면 분류/도메인 손실을 별도 기록하고 중단한다
 수정 전 코드SHA97858e9e26ef2203c7280acee6e69190eb77513db1c92de20e0bfe17b95b1dcd만 명시적 호환 허용.
 다른 데이터/설정/adapter 변경은 거부. config와 checkpoint identity는 보존하고 수치 수정 이력을 별도 저장.
 Colab GPU에서 동일 오류가 해결됐는지는 아직 검증하지 않았다.
+
+## SELFI checkpoint 복원 검증 오류 수정 (2026-10-13)
+Fine-tuned state mismatch를 실제 공개 SELFI 가중치로 로컬 재현: 제외한 ArcFace925개 key 중 PyTorch는771개만 missing으로 보고한다.
+154개 BatchNorm num_batches_tracked를 자동 처리하여 기존 missing_keys 집합 비교가 잘못 실패했다.
+저장된 학습 key 집합을 먼저 엄격히 검사하고, 공개 frozen ArcFace state와 합쳐 strict=True로 복원하도록 수정했다.
+데이터/학습 손실/모델/전처리 변경 없음. 기존 완료 run과 evaluation을 알려진 코드SHA에 한해 재사용한다.
+이전 수치 수정 코드SHA0d4d235b437c3b86e22a2dcf63ece9f9fd480245a8695afca45208e2ffd63a9c도 호환 대상.

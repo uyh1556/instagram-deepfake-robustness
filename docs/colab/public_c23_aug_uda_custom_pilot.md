@@ -92,6 +92,7 @@ assert _exit_code==0,'학습 실패: 위 오류 확인'
 ## Cell 6 — 원본 + 스무딩 3단계 평가
 
 3모델 × baseline 포함5전략 ×4조건 ×1824장. 완료 조건 재사용.
+SELFI 복원 수정 후에는 코드 push/pull 후 이 평가 셀만 재실행. 기존 checkpoint/TAR 유지, 재학습 불필요.
 
 ```python
 !python -u "{PROJECT}/scripts/public_c23_adaptation_pilot.py" evaluate {COMMON}
