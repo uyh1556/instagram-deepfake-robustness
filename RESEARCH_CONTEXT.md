@@ -100,3 +100,19 @@ SELFIcheckpoint에학습config없음, README FF++c23/YAML FF-NT차이를protocol
 이번외부모델평가는Celeb-DF공식test518영상/8288frames, 기존자체test114영상과구분.
 코랩직접!python-u로진행률표시, 원본/25·50·75%4조건, 재학습UDA없음.
 전체GPU평가는아직진행하지않았다. setup·prepare·evaluate코랩으로실행예정.
+
+## 공개 탐지기 c23 Aug/UDA custom 파일럿 준비 (2026-10-13)
+사용자가 비라벨 target 인물 다양성을 넓히는 자체 분할 파일럿을 승인했다.
+기존 create_celebdf_identity_split.partition(seed42)의 80/10/10을 재사용하며 원본 manifest는 변경하지 않는다.
+FF++ c23 기존 global_source_aware_v1에서 source train3000(real1500/DF750/F2F750), val600(real300/DF150/F2F150).
+Celeb-DF custom train47명에서 정답을 보지 않고3000장(영상당 최대4장), target manifest의 label/class_index는 공란.
+Custom test6명1824장 전체, val6명은 사용하지 않음. 공식 test 비교와 구분한다.
+TAR data/exports/public_c23_adaptation_custom_pilot_v2/public_detector_c23_custom_source_target_test_seed42_v2.tar는671897600bytes.
+SHA256 6e8034c72c777febac7261fbc8c98f8373a92ad84be86210c4227c17ccefd9bf.
+실제 TAR의6600 source/val/target +1824 test PNG 경로와 manifest hash를 확인했다.
+이전3명 target v1 TAR도 보존했다. 업로드/GPU학습은 아직 실행하지 않았다.
+public_c23_adaptation_pilot.py는 source_ft/source_aug/uda_normal/uda_smoothing 각3epochs 및 baseline 평가를 제공한다.
+모델별 public preprocessing 유지, BN running statistics 고정, clean source validation frame AUC로 best 선택.
+기존 스무딩3강도, domain loss .1 progressive GRL. RECCE/UCF 원논문 보조 손실 재현이 아닌 분류 fine-tuning.
+실제 세 공개 checkpoint CPU forward 및 CE+GRL backward와 코랩7셀 구문을 확인했다. GPU 전체 학습 완료 주장은 하지 않는다.
+정식 split은 추후 재검토한다. 파일럿의6명 test 및 과거 평가 노출 한계를 명시한다.
