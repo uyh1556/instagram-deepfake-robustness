@@ -1,4 +1,4 @@
-"""Copy/extract the two locally prepared FF++ c23 ROI16 archives in Colab."""
+"""Extract five method trainval TARs + unchanged test TAR; old combined layout supported."""
 import argparse
 import json
 import shutil
@@ -6,7 +6,8 @@ import subprocess
 import time
 from pathlib import Path
 
-ARCHIVES=['ffpp_c23_4methods_roi16_trainval_v1.tar','ffpp_c23_4methods_roi16_test_v1.tar']
+METHOD_ARCHIVES=[f'ffpp_c23_{slug}_roi16_trainval_v1.tar' for slug in ['real','deepfakes','face2face','faceswap','neuraltextures']]
+TEST_ARCHIVE='ffpp_c23_4methods_roi16_test_v1.tar'
 
 
 def main():
@@ -14,10 +15,13 @@ def main():
     p.add_argument('--drive-data',type=Path,required=True)
     p.add_argument('--data-root',type=Path,required=True)
     args=p.parse_args()
-    inventory=json.loads((args.drive_data/'inventory.json').read_text())
+    index=args.drive_data/'method_inventory.json'
+    if not index.is_file():index=args.drive_data/'inventory.json'
+    inventory=json.loads(index.read_text())
     if not inventory['complete']:raise RuntimeError('TAR preparation has not completed')
     entries={x['name']:x for x in inventory['archives']}
-    for name in ARCHIVES:
+    archives=METHOD_ARCHIVES+[TEST_ARCHIVE] if inventory.get('layout')=='method_trainval_v1' else ['ffpp_c23_4methods_roi16_trainval_v1.tar',TEST_ARCHIVE]
+    for name in archives:
         manifest=args.data_root/'manifests'/f'{name.removesuffix(".tar")}.csv'
         if manifest.is_file():
             print('Already extracted:',name,flush=True);continue

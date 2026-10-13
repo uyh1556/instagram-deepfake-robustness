@@ -17,14 +17,20 @@ Celeb-DF·스무딩·augmentation·UDA는 이 노트북에 포함하지 않는�
 
 ## 준비
 
-새 코드를 직접 push하고, 크롭/TAR가 완료된 뒤 아래 폴더에 **두 TAR + inventory.json**을 업로드한다.
+새 코드를 직접 push하고, 아래 폴더에 **기법별 Train/Val TAR 5개 + 기존 Test TAR + method_inventory.json**을 업로드한다.
 `MyDrive/instagram-deepfake-robustness/data/ffpp_c23_4methods_roi16_v1/`
 
-- ffpp_c23_4methods_roi16_trainval_v1.tar
+- ffpp_c23_real_roi16_trainval_v1.tar
+- ffpp_c23_deepfakes_roi16_trainval_v1.tar
+- ffpp_c23_face2face_roi16_trainval_v1.tar
+- ffpp_c23_faceswap_roi16_trainval_v1.tar
+- ffpp_c23_neuraltextures_roi16_trainval_v1.tar
 - ffpp_c23_4methods_roi16_test_v1.tar
-- inventory.json
+- method_inventory.json
 
-SHA256SUMS.txt·protocol.json도 같은 Drive 폴더에 보관하면 된다.
+METHOD_SHA256SUMS.txt·protocol.json도 같은 Drive 폴더에 보관하면 된다.
+Test TAR는 기존 파일 그대로 재사용한다. 기존 통합 Train/Val TAR는 새 코랩에 필요하지 않다.
+Canonical manifest 바이트·이미지·분할은 그대로 유지하므로 학습 코드/조건과 체크포인트 호환성은 바뀌지 않는다.
 기존 c0나 이전 aligned256 TAR를 사용하지 않는다. 모델 초기 가중치는 첫 실행 시 다운로드한다.
 GPU는 A100을 권장하며, 부족하면 batch-size를 변경하기 전에 새 run 경로를 사용한다.
 
@@ -61,7 +67,7 @@ COMMON=f'--model {MODEL} --data-root "{DATA_ROOT}" --output-root "{RUNS_ROOT}" -
 print('Model:',MODEL,'Run:',RUN)
 ```
 
-## Cell 3 — 두 TAR 준비
+## Cell 3 — 기법별 TAR 준비
 
 Drive TAR를 로컬로 복사한 뒤 추출하며, 이미 추출된 데이터는 재사용한다.
 데이터 파일 전체 내용 해시를 반복 계산하지 않고, 학습 시작 시 목록·개수·분할·파일 존재 여부만 확인한다.
