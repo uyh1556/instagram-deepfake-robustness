@@ -64,3 +64,16 @@ Target class labels를 adaptation manifest에서 제거했다. YouTube-real iden
 native crop에서 smoothing25/50/75% -> 기존299 resize/normalize. Target/test는 재크롭하지 않는다.
 local tiny CPU prepare/train/evaluate20조건을 점검했다. 전체GPU 성능 실험은 아직 수행하지 않았다.
 pilot TAR1139773440bytes, 전체13388장. 기존 대형 TAR를 추가로 해제할 필요가 없다.
+
+## Celeb-DF supervised baseline 준비 (2026-10-13)
+사용자 요청으로 Xception과 CLIP ViT-B/16의 원본 Celeb-DF 정식 학습 코드/코랩을 추가한다.
+사용자가 승인한 새 인물 분리 비율80/10/10: filename ID59개를 Train47/Val6/Test6으로 seed42 분리.
+기존 공식test 이미지도 새 train에 포함될 수 있는 별도 custom protocol이며 공식test 비교로 보고하지 않는다.
+YouTube-real은 ID 미확인이라 제외, fake의 두 ID가 서로 다른 분할이면 해당 영상 제외.
+원본 영상/프레임/크롭/이전manifest는 변경하지 않는다. 두 모델은 같은 새manifest를 사용한다.
+Train pool Real7441/Fake54832, epoch당각7441, Val1680장/105영상, Test1824장/114영상.
+ImageNet Xception299/Normalize0.5와 OpenAI CLIP B16 이미지 인코더224/공식normalize를 사용.
+모두 encoder 전체 fine-tuning; JPEG/smoothing/noise/DA 없이 flip0.5만 적용한다.
+15epochs, AdamW, batch16, patience4, best는clean validation video AUC로 선택.
+기존 FF++ detector를 초기값으로 사용하지 않는다. 새manifest 생성은Colab Cell4에서만 실행한다.
+GPU 정식 학습은 아직 실행하지 않았다. Test인물6명 및 기존pilot 평가 노출 한계를 명시한다.
