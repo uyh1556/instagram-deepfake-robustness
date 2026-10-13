@@ -116,3 +116,11 @@ public_c23_adaptation_pilot.py는 source_ft/source_aug/uda_normal/uda_smoothing 
 기존 스무딩3강도, domain loss .1 progressive GRL. RECCE/UCF 원논문 보조 손실 재현이 아닌 분류 fine-tuning.
 실제 세 공개 checkpoint CPU forward 및 CE+GRL backward와 코랩7셀 구문을 확인했다. GPU 전체 학습 완료 주장은 하지 않는다.
 정식 split은 추후 재검토한다. 파일럿의6명 test 및 과거 평가 노출 한계를 명시한다.
+
+## 파일럿 수치 오류 수정 (2026-10-13)
+사용자 로그에서 RECCE uda_normal epoch3 batch139/188의 Nonfinite loss 중단 확인. 실제 원인은 로그만으로 미확정.
+AMP 비정상 forward loss 발생 시 RNG를 복원해 같은 배치를 FP32 재계산하며 샘플을 건너뛰지 않는다.
+FP32도 실패하면 분류/도메인 손실을 별도 기록하고 중단한다. 기존 last는 완료 epoch 기준 보존.
+수정 전 코드SHA97858e9e26ef2203c7280acee6e69190eb77513db1c92de20e0bfe17b95b1dcd만 명시적 호환 허용.
+다른 데이터/설정/adapter 변경은 거부. config와 checkpoint identity는 보존하고 수치 수정 이력을 별도 저장.
+Colab GPU에서 동일 오류가 해결됐는지는 아직 검증하지 않았다.

@@ -24,6 +24,36 @@ ROOT=Path(__file__).resolve().parents[1]
 STRATEGIES=['source_ft','source_aug','uda_normal','uda_smoothing']
 CONDITIONS=['normal','smooth_weak','smooth_medium','smooth_strong']
 FEATURE_DIMS={'recce':2048,'ucf':256,'selfi':768}
+PRE_REPAIR_SHA='97858e9e26ef2203c7280acee6e69190eb77513db1c92de20e0bfe17b95b1dcd'
+
+
+def run_configuration(args,name,strategy,cfg,public):
+    current=configuration(args,name,strategy,cfg,public)
+    path=args.runs_root/run_name(name,strategy)/'config.json'
+    if path.is_file():
+        saved=json.loads(path.read_text())
+        if saved!=current:
+            old=dict(saved);new=dict(current)
+            old_sha=old.pop('code_sha256',None);new.pop('code_sha256',None)
+            if old!=new or old_sha!=PRE_REPAIR_SHA:raise ValueError('Run config differs beyond approved numerical repair')
+            # Preserve original config/checkpoint identities; record the repair separately.
+            baseline.json_write(path.parent/'numerical_repair.json',{
+                'original_code_sha256':old_sha,'repair_code_sha256':current['code_sha256'],
+                'policy':'Retry nonfinite AMP loss on same batch in FP32; never skip a batch',
+                'original_config_preserved':True})
+            return saved
+    return current
+
+
+def batch_loss(name,model,discriminator,xs,xt,y,uda,grl,domain_weight):
+    logits,features=outputs(name,model,torch.cat([xs,xt]))
+    if uda:
+        cls=nn.functional.cross_entropy(logits[:len(y)],y)
+        domains=torch.cat([torch.zeros_like(y),torch.ones_like(y)])
+        dom=nn.functional.cross_entropy(discriminator(Reverse.apply(features,grl)),domains)
+        return cls+domain_weight*dom,cls,dom
+    cls=nn.functional.cross_entropy(logits,torch.cat([y,y]))
+    return cls,cls,cls.new_zeros(())
 
 
 def inputs(args):
@@ -125,7 +155,7 @@ def train(args):
     target=data[data.role.eq('target')].reset_index(drop=True)
     for name in args.models:
         for strategy in args.strategies:
-            config=configuration(args,name,strategy,cfg,public);identity=key(config)
+            config=run_configuration(args,name,strategy,cfg,public);identity=key(config)
             run=args.runs_root/run_name(name,strategy);run.mkdir(parents=True,exist_ok=True)
             if (run/'completed.json').exists():
                 if json.loads((run/'completed.json').read_text())['identity']!=identity or not(run/'best.pt').is_file():raise ValueError('Completed run differs')
@@ -163,16 +193,23 @@ def train(args):
                     optimizer.zero_grad(set_to_none=True)
                     progress=(epoch*len(loader)+step)/(args.epochs*len(loader))
                     grl=2/(1+math.exp(-10*progress))-1
+                    cpu_rng=torch.get_rng_state()
+                    cuda_rng=torch.cuda.get_rng_state() if args.device=='cuda' else None
                     with torch.autocast(device_type=args.device,enabled=args.device=='cuda'):
-                        logits,features=outputs(name,model,torch.cat([xs,xt]))
-                        if uda:
-                            class_loss=nn.functional.cross_entropy(logits[:len(y)],y)
-                            domains=torch.cat([torch.zeros(len(y),device=args.device),torch.ones(len(y),device=args.device)]).long()
-                            domain_loss=nn.functional.cross_entropy(discriminator(Reverse.apply(features,grl)),domains)
-                            loss=class_loss+args.domain_weight*domain_loss
-                        else:
-                            class_loss=nn.functional.cross_entropy(logits,torch.cat([y,y]));loss=class_loss
-                    if not torch.isfinite(loss):raise RuntimeError('Nonfinite loss; no completed run saved')
+                        loss,class_loss,domain_loss=batch_loss(name,model,discriminator,xs,xt,y,uda,grl,args.domain_weight)
+                    if not torch.isfinite(loss):
+                        amp_values={'classification':float(class_loss.detach()),'domain':float(domain_loss.detach())}
+                        del loss,class_loss,domain_loss
+                        torch.set_rng_state(cpu_rng)
+                        if cuda_rng is not None:torch.cuda.set_rng_state(cuda_rng)
+                        with torch.autocast(device_type=args.device,enabled=False):
+                            loss,class_loss,domain_loss=batch_loss(name,model,discriminator,xs.float(),xt.float(),y,uda,grl,args.domain_weight)
+                        event={'epoch':epoch+1,'batch':step,'amp':amp_values,
+                               'fp32_classification':float(class_loss.detach()),'fp32_domain':float(domain_loss.detach())}
+                        with (run/'numerical_events.jsonl').open('a') as f:f.write(json.dumps(event)+'\n')
+                        if not torch.isfinite(loss):
+                            raise RuntimeError(f'FP32 also nonfinite: {event}. Last completed epoch preserved; no batch skipped.')
+                        print(f'FP32 retry succeeded: {name}/{strategy} epoch{epoch+1} batch{step}',flush=True)
                     scaler.scale(loss).backward();scaler.unscale_(optimizer)
                     nn.utils.clip_grad_norm_(parameters,1.);scaler.step(optimizer);scaler.update()
                     total+=float(loss.detach())*len(y);count+=len(y)
@@ -201,10 +238,11 @@ def evaluate(args):
     for name in args.models:
         for strategy in ['baseline',*args.strategies]:
             model,transform=adapters.load(name,args.asset_root/name,args.asset_root/f'{name}_public.pth')
-            identity=key({'configuration':configuration(args,name,strategy,cfg,public),'test_manifest_sha256':cfg['test_manifest_sha256']})
+            config=run_configuration(args,name,strategy,cfg,public)
+            identity=key({'configuration':config,'test_manifest_sha256':cfg['test_manifest_sha256']})
             if strategy!='baseline':
                 state=torch.load(args.runs_root/run_name(name,strategy)/'best.pt',map_location='cpu',weights_only=True)
-                if state['identity']!=key(configuration(args,name,strategy,cfg,public)):raise ValueError('Wrong trained checkpoint')
+                if state['identity']!=key(config):raise ValueError('Wrong trained checkpoint')
                 restore(name,model,state['model_state_dict']);del state
             model.to(args.device).eval()
             for condition in CONDITIONS:
