@@ -10,12 +10,14 @@ def main():
     for model in ['xception', 'clip_b16']:
         source = ROOT / 'docs/colab' / f'train_celebdf_{model}_seed42.md'
         cells = []
-        for i, text in enumerate(re.split(r'```python\n|\n```', source.read_text())):
+        for i, text in enumerate(re.split(r'^```python\n|^```[ \t]*$', source.read_text(), flags=re.MULTILINE)):
             if not text.strip():
                 continue
             kind = 'code' if i % 2 else 'markdown'
             cell = {'cell_type': kind, 'metadata': {}, 'source': text.splitlines(keepends=True)}
             if kind == 'code':
+                if text.lstrip().splitlines()[0] == 'python':
+                    raise ValueError('Markdown language tag leaked into code cell')
                 cell.update(execution_count=None, outputs=[])
             cells.append(cell)
         notebook = {'cells': cells, 'nbformat': 4, 'nbformat_minor': 5,
