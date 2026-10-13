@@ -190,3 +190,17 @@ evaluate_ffpp_baselines_celebdf_smoothing.py 및 동명 평가 Colab/MD 추가. 
 원본–조작 영상 연결 중복 검사는 향후 UDA 준비 시 별도 필요하며 완료했다고 주장하지 않는다.
 실제 Colab baseline 학습 완료 및 새로운 smoothing 성능 결과는 아직 원격 파일로 확인하지 않았다.
 로컬 tiny fixture에서 스무딩 생성/추론/완료결과 재사용/fallback 유지/평가영상 목록 저장 통과. 코랩6개 코드셀 구문 검사 통과.
+
+## FF++ baseline 추가학습 Aug/DANN 비교 (2026-10-14)
+사용자 요청: baseline 평가와 별도 코랩에서 추가학습을 먼저 실행. 최대10epochs/patience3 선택, 검증1200장 승인.
+ffpp_c23_smoothing_adaptation.py, train_ffpp_c23_smoothing_aug_uda_seed42 MD/노트북 추가.
+source_ft/augmentation/uda_normal/uda_smoothing을 동일 초기 FF++ baseline에서 비교. 기존 source split/model/preprocessing 보존.
+source epoch6000장(Real3000/Fake각750), source clean validation1200(Real600/Fake각150) 고정부분집합.
+UDA target5000장 정답 제거 후 영상균등 선택/반복샘플링. 공식 test 제외 및 양쪽identity_same_suffix 원본후보 연결component 보수적제외.
+로컬 전체목록에서 conservative eligible342영상/5472장. filename후보이며 실제source/driver관계를 완전검증했다고 주장하지 않는다.
+분류CE+0.1DANN(progressiveGRL), target정답/pseudo-label없음. LayerNorm domainhead, 모든전략BN통계고정, BF16지원시BF16/아니면FP32, FP16없음.
+Xception전체/CLIP·DINO기존마지막2블록 등 재사용, LR1e-5/1e-5. checkpoint는 추가학습epoch중 source clean val macro4AUC.
+평가도 포함: 공식test 원본/스무딩3단계 FP32 frame지표만. baseline 저장결과 재사용, baseline 재추론없음.
+prepare_ffpp_c23_training_data.py에 --trainval-only 추가(기존기본동작은그대로), 이코랩은FF++testTAR제외.
+로컬 tinyfixture 네전략학습/완료skip/target라벨제거/고정source목록/평가재사용 검사통과. 실제3백본 DANN forward/logit동일성/유한gradient 검사통과.
+실제Colab 추가학습은 실행하지 않았다. 새TAR생성/Drive변경/자동예약/Gitpush없음.
