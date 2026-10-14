@@ -220,3 +220,12 @@ source6000/epoch, FF++ val1200, 최대10/patience3, LR1e-5, 기존backbone train
 baseline0.7281/0.7173 및source_ft0.7459/0.7405보다높음. CLIP UDA_smoothing 원본FNR89.71%,strong80.94%로실제쪽판정편향.
 target_unlabelled.csv 5000장/342영상,정답컬럼없음. 사후출처집계 Real3914/Fake1086(78.28%/21.72%),YouTube-real3357장.
 이 불균형은원인후보이나인과관계확정아님. 기존문단의GPU미실행은코드작성당시기록이며,해당baseline/추가학습후평가결과는이후Drive에서확인했다.
+
+## 저장된 예측 기반 로짓 이동 분석 준비 (2026-10-14)
+사용자 요청: analyze_smoothing_logit_shift.py 및 analyze_baseline_smoothing_logit_shift_seed42 MD/코랩 추가.
+기본은세baseline의원본/스무딩CSV·JSON12쌍만읽음. 학습/추론/이미지/TAR/checkpoint/GPU불필요.
+crop_path별pair로 실제/가짜·전체/검출성공/fallback별 Δ확률, 확률상승비율, Δmargin중앙값/평균/IQR, 판정기준교차율 계산.
+margin=log(p)-log1p(-p), 저장softmax확률기반환산이며rawlogit직접저장값이아님. 정확한0/1pair는margin통계에서제외, 포화율표시, clipping없음.
+검출성공이미지에대한marginhistogram과원본/strong확률분포PNG저장. frame기술통계이며영상상관을무시한유의성주장없음.
+원본평가파일변경없음. 작은fixture에서순서다른CSVpair연결/포화제외/라벨별통계/PNG출력/재실행/코랩4셀구문검사통과.
+실제전체prediction 분석은아직실행하지않았다. Gitpush/Drive변경/자동화없음.
