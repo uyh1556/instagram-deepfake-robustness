@@ -1,0 +1,162 @@
+# FFPP_c23_Supervised_DA_Seed42
+
+Xception·CLIP B/16·DINOv2 B/14의 기존 FF++ baseline에서 supervised DA만 추가학습하고 평가한다.
+**Baseline/source_ft/augmentation/UDA 재학습·재평가 없음. FF++ Test 평가 없음.**
+
+|추가학습|내용|
+|---|---|
+|sda_normal|FF++ 원본 + 정답이 있는 Celeb-DF 원본|
+|sda_smoothing|FF++ 원본 + 정답이 있는 Celeb-DF 랜덤 스무딩25/50/75%|
+
+- 기존 UDA에서 사용한 **동일한 target 5,000장·순서·영상 샘플링**을 재사용한다. target을 다시 분할/균형화하지 않는다.
+- target 정답은 non-test metadata에서 복원한다. 공식 test 영상/프레임과 보수적 연결 제외 규칙은 유지한다.
+- source epoch6,000장(Real3,000/Fake각750), FF++ clean Validation **1,200장(Real600/Fake각150)** 동일 목록.
+- **손실: source CE + target CE**, 각 가중치1. DANN·도메인 판별기·pseudo-label·클래스 가중치 없음.
+- 이미 학습한 baseline best.pt에서 시작. encoder/head LR1e-5, batch16, 최대10epoch/patience3, seed42.
+- 기존 trainable 범위·모델별 전처리·BN 통계 고정 유지. 추가 JPEG 없음, 스무딩 fallback 그대로 포함.
+- 체크포인트는 FF++ clean 검증 macro4 frame AUC로 선택. target/test를 검증에 사용하지 않는다.
+- target은 영상별 균등 반복 샘플링하므로 epoch당6,000회 노출, 고정 pool5,000장 중 일부 재사용.
+- **SDA만 공식 test8,288장 × 원본/스무딩3단계에서 평가**. 세 모델×두 학습법×네 조건=24조건.
+- 이미지 단위 AUC/Accuracy/F1/FPR/FNR, threshold0.5 고정. video 성능 지표 없음.
+- supervised DA는 target 정답을 추가로 제공받는 참조 실험이다. UDA와 같은 정보 조건의 방법이 아니다.
+
+새 TAR 업로드는 필요 없다. 새 코드를 push한 뒤 실행한다.
+같은 Colab 런타임에 기존 데이터가 있다면 재추출을 건너뛴다. 설치 후 PIL/torch를 kernel에서 import하지 않는다.
+
+## Cell 1 — Drive·코드·설치
+
+```python
+from google.colab import drive
+drive.mount('/content/drive')
+from pathlib import Path
+import subprocess,sys,json,shutil
+PROJECT=Path('/content/instagram_deepfake_robustness')
+if PROJECT.exists():
+    subprocess.run(['git','-C',str(PROJECT),'pull','--ff-only'],check=True)
+else:
+    subprocess.run(['git','clone','https://github.com/uyh1556/instagram-deepfake-robustness.git',str(PROJECT)],check=True)
+assert (PROJECT/'scripts/ffpp_c23_supervised_da.py').is_file(),'새 코드 push 필요'
+subprocess.run([sys.executable,'-m','pip','install','-q','setuptools==80.9.0','wheel'],check=True)
+subprocess.run([sys.executable,'-m','pip','install','-q','--no-build-isolation','-r',str(PROJECT/'requirements-ffpp-c23-smoothing-eval.txt')],check=True)
+subprocess.run([sys.executable,'-c','import torch; assert torch.cuda.is_available(),"GPU 런타임 선택"; print(torch.cuda.get_device_name(0))'],check=True)
+```
+
+## Cell 2 — 변수
+
+기존 UDA 완료 때 사용한 `xception_clip_b16` 폴더의 target 목록을 세 모델 공통으로 읽는다.
+당시 DINOv2도 같은 target/검증 목록을 사용한 것을 확인했다. MODELS를 나눠 실행해도 UDA_MANIFEST_DIR은 바꾸지 않는다.
+
+```python
+MODELS=['xception','clip_b16','dinov2_b14']
+STRATEGIES=['sda_normal','sda_smoothing']
+ROOT=Path('/content/drive/MyDrive/instagram-deepfake-robustness')
+FF_DATA=ROOT/'data/ffpp_c23_4methods_roi16_v1'
+CDF_DATA=ROOT/'data/celebdf_v2_face_crops16_v1'
+SOURCE_ROOT=Path('/content/ffpp_c23_native_roi16_v1')
+TARGET_ROOT=Path('/content/celebdf_v2_face_crops16_v1')
+BASELINE_DRIVE_RUNS=ROOT/'runs/ffpp_c23_4methods_baseline_v1'
+BASELINE_RUNS=Path('/content/ffpp_c23_baseline_eval_runs')
+UDA_MANIFEST_DIR=ROOT/'manifests/ffpp_c23_smoothing_adaptation_v1/seed42/xception_clip_b16'
+RUNS_ROOT=ROOT/'runs/ffpp_c23_supervised_da_v1'
+GROUP='_'.join(MODELS)
+MANIFEST_ROOT=ROOT/'manifests/ffpp_c23_supervised_da_v1/seed42'/GROUP
+EVALUATION_ROOT=ROOT/'evaluations/ffpp_c23_supervised_da_v1/seed42'/GROUP
+CACHE_ROOT=Path('/content/celebdf_official_smoothing_cache_v1')
+MODEL_ARGS=' '.join(MODELS)
+STRATEGY_ARGS=' '.join(STRATEGIES)
+COMMON=f'--models {MODEL_ARGS} --strategies {STRATEGY_ARGS} --seed 42 --source-root "{SOURCE_ROOT}" --target-root "{TARGET_ROOT}" --baseline-runs-root "{BASELINE_RUNS}" --uda-manifest-dir "{UDA_MANIFEST_DIR}" --runs-root "{RUNS_ROOT}" --manifest-root "{MANIFEST_ROOT}" --output-root "{EVALUATION_ROOT}" --cache-root "{CACHE_ROOT}" --batch-size 16 --workers 2'
+for name in ['protocol.json','target_unlabelled.csv','source_validation.csv']:
+    assert (UDA_MANIFEST_DIR/name).is_file(),f'기존 UDA 목록 경로 확인: {UDA_MANIFEST_DIR/name}'
+print('Models:',MODELS,'SDA methods:',STRATEGIES)
+```
+
+## Cell 3 — FF++ Train/Val 준비
+
+```python
+!python -u "{PROJECT}/scripts/prepare_ffpp_c23_training_data.py" --drive-data "{FF_DATA}" --data-root "{SOURCE_ROOT}" --trainval-only
+assert _exit_code==0,'FF++ 준비 실패: 위 오류 확인'
+```
+
+## Cell 4 — Celeb-DF·초기 baseline 준비
+
+공식 test/non-test TAR만 사용한다. 이전 임의80/10/10 TAR는 사용하지 않는다.
+
+```python
+archives={
+ 'celebdf_v2_roi16_test_v1.tar':557015040,
+ 'celebdf_v2_roi16_non_test_real_v1.tar':826142720,
+ 'celebdf_v2_roi16_non_test_fake_v1.tar':5679564800,
+}
+for name,size in archives.items():
+    source=CDF_DATA/name
+    assert source.is_file(),source
+    manifest=TARGET_ROOT/'manifests'/f'{name.removesuffix(".tar")}.csv'
+    prior_marker=Path('/content')/f'.adapt_{name}.done'
+    marker=Path('/content')/f'.sda_{name}.done'
+    available=(marker.exists() or prior_marker.exists())
+    if name=='celebdf_v2_roi16_test_v1.tar':
+        available=available or Path('/content/.celebdf_official_roi16_test_v1.done').exists()
+    if available and manifest.is_file():
+        print('Already extracted:',name,flush=True)
+        continue
+    assert source.stat().st_size==size,f'업로드 미완료 또는 다른 TAR: {source}'
+    assert shutil.disk_usage('/content').free>2*size+2*2**30,'Colab 로컬 공간 부족'
+    local=Path('/content')/name
+    print('Copying:',name,flush=True)
+    shutil.copy2(source,local)
+    assert local.stat().st_size==size,'로컬 복사 미완료'
+    print('Extracting:',name,flush=True)
+    result=subprocess.run(['tar','-xf',str(local),'-C','/content'],capture_output=True,text=True)
+    if result.returncode:
+        print(result.stderr)
+        raise RuntimeError('Celeb-DF 압축 해제 실패')
+    assert manifest.is_file(),manifest
+    marker.touch()
+    local.unlink()
+for model in MODELS:
+    name=f'{model}_ffpp_c23_roi16_baseline_v1_seed42'
+    source=BASELINE_DRIVE_RUNS/name
+    dest=BASELINE_RUNS/name
+    for filename in ['best.pt','config.json','completed.json']:
+        assert (source/filename).is_file(),f'Baseline 완료 확인: {source/filename}'
+    dest.mkdir(parents=True,exist_ok=True)
+    for filename in ['best.pt','config.json','completed.json']:
+        shutil.copy2(source/filename,dest/filename)
+    print('Initial baseline ready:',model,flush=True)
+```
+
+## Cell 5 — Supervised DA만 학습
+
+진행률·ETA·검증 요약 표시. 완료 run skip, 중단 시 last.pt의 마지막 완료 epoch부터 재개.
+UDA나 다른 모델 변형의 체크포인트에서 시작하지 않고 원래 FF++ baseline에서 시작한다.
+
+```python
+!python -u "{PROJECT}/scripts/ffpp_c23_supervised_da.py" train {COMMON} --epochs 10 --patience 3 --source-images 6000 --val-images 1200 --target-images 5000 --encoder-lr 1e-5 --head-lr 1e-5
+assert _exit_code==0,'SDA 학습 실패: 위 오류 확인 후 Cell 5 재실행'
+```
+
+## Cell 6 — Supervised DA만 평가
+
+baseline·augmentation·UDA는 읽거나 재추론하지 않는다. FF++ test도 평가하지 않는다.
+SDA 여섯 체크포인트의 공식 Celeb-DF test 원본·스무딩3단계만 평가한다. 완료된 조건은 재사용한다.
+
+```python
+!python -u "{PROJECT}/scripts/ffpp_c23_supervised_da.py" evaluate {COMMON} --batch-size 32
+assert _exit_code==0,'SDA 평가 실패: 위 오류 확인 후 Cell 6 재실행'
+```
+
+## Cell 7 — SDA 결과만 확인
+
+```python
+import csv
+from IPython.display import Markdown,display
+rows=list(csv.DictReader((EVALUATION_ROOT/'sda_frame_summary.csv').open()))
+for model in MODELS:
+    table=[f'### {model}', '', '|SDA 방법|평가 조건|AUC|Accuracy|F1|Real FPR|Fake FNR|',
+           '|---|---|---:|---:|---:|---:|---:|']
+    for r in rows:
+        if r['model']==model:
+            table.append(f"|{r['strategy']}|{r['condition']}|{float(r['auc']):.4f}|{float(r['accuracy']):.2%}|{float(r['f1']):.4f}|{float(r['real_fpr']):.2%}|{float(r['fake_fnr']):.2%}|")
+    display(Markdown('\n'.join(table)))
+print('SDA-only results:',EVALUATION_ROOT)
+```

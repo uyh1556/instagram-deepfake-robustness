@@ -204,3 +204,19 @@ Xception전체/CLIP·DINO기존마지막2블록 등 재사용, LR1e-5/1e-5. chec
 prepare_ffpp_c23_training_data.py에 --trainval-only 추가(기존기본동작은그대로), 이코랩은FF++testTAR제외.
 로컬 tinyfixture 네전략학습/완료skip/target라벨제거/고정source목록/평가재사용 검사통과. 실제3백본 DANN forward/logit동일성/유한gradient 검사통과.
 실제Colab 추가학습은 실행하지 않았다. 새TAR생성/Drive변경/자동예약/Gitpush없음.
+
+## Supervised DA 전용 비교 준비 (2026-10-14)
+사용자 요청: 세 FF++ baseline에 supervised DA를 적용하고 SDA 결과만 평가, 불필요한 기존학습/평가 제외.
+scripts/ffpp_c23_supervised_da.py, train_test_ffpp_c23_supervised_da_seed42 MD/노트북 추가.
+sda_normal/sda_smoothing만 제공: FF++ source CE + 같은 UDA target5000장의 실제정답 CE, 각weight1. DANN/클래스가중치없음.
+기존UDA manifest/protocol/source_validation을읽고 재생성목록과동일성 확인, 비테스트metadata에서정답복원. 비율/순서/영상샘플러 보존.
+source6000/epoch, FF++ val1200, 최대10/patience3, LR1e-5, 기존backbone trainable범위·전처리·BN고정 유지.
+공식test8288 원본/스무딩3단계에서SDA6개체크포인트만평가. Baseline/FT/Aug/UDA 및FF++test는재학습/재평가안함.
+새TAR/Drive변경/Gitpush/자동화없음. 작은fixture에서 라벨복원/기존UDA와같은source·targetview/학습/완료skip/중단재개/평가재사용 통과.
+코랩7개코드셀 구문검사 통과. 실제SDA GPU학습은 아직 실행하지 않았다.
+
+## 이전 추가학습 결과 확인 메모 (2026-10-14)
+앞선Drive읽기에서 세모델5전략4조건=60개평가행확인. DINO augmentation은원본/strongAUC0.7739/0.7671,
+baseline0.7281/0.7173 및source_ft0.7459/0.7405보다높음. CLIP UDA_smoothing 원본FNR89.71%,strong80.94%로실제쪽판정편향.
+target_unlabelled.csv 5000장/342영상,정답컬럼없음. 사후출처집계 Real3914/Fake1086(78.28%/21.72%),YouTube-real3357장.
+이 불균형은원인후보이나인과관계확정아님. 기존문단의GPU미실행은코드작성당시기록이며,해당baseline/추가학습후평가결과는이후Drive에서확인했다.
