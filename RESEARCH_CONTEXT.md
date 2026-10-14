@@ -229,3 +229,18 @@ margin=log(p)-log1p(-p), 저장softmax확률기반환산이며rawlogit직접저�
 검출성공이미지에대한marginhistogram과원본/strong확률분포PNG저장. frame기술통계이며영상상관을무시한유의성주장없음.
 원본평가파일변경없음. 작은fixture에서순서다른CSVpair연결/포화제외/라벨별통계/PNG출력/재실행/코랩4셀구문검사통과.
 실제전체prediction 분석은아직실행하지않았다. Gitpush/Drive변경/자동화없음.
+
+## SDA 결과 및 클래스 보정 비교 준비 (2026-10-14)
+Drive에서SDA 3모델×2전략×4조건=24개평가JSON을확인했다. test8288장/manifest해시동일/threshold0.5/FP32.
+세모델모두baseline보다SDA AUC가높고FPR은낮지만FNR은높다. target Real3914/Fake1086 불균형은원인후보이며인과확정아님.
+사용자승인으로scripts/ffpp_c23_balanced_supervised_da.py 및train_test_ffpp_c23_balanced_sda_seed42 MD/코랩추가.
+기존SDA 스크립트변경없이입력복원/스무딩view/영상샘플러/전처리/체크포인트읽기/평가엔진을재사용한다.
+새조건sda_smoothing_balanced만세모델각1개. 기존FF++baseline부터시작하며SDA완료모델을계속학습하지않는다.
+같은frozen target5000장의영상균등샘플러classprior p로weight=1/(2p) 계산. target CE만per-image weight 후배치mean,
+배치weight합으로나누지않아단일class배치에서도보정유지. source CE그대로, 기대target평균weight1.
+source6000/epoch, val1200, 최대10/patience3, seed42, 기존trainable범위/BN고정/검증macro4AUC유지.
+새runs/manifests/evaluations:ffpp_c23_balanced_supervised_da_v1. 공식test원본/스무딩3단계12조건만새추론.
+비교셀은기존SDA smoothing 저장예측을읽어AUC/FPR/FNR/ROC상TPR@FPR<=5%와차이저장,기존결과재추론없음.
+ROC지표는기술통계이며test기반배포threshold선택없음. 대상영상source/driver관계는기존filename후보제외한계유지.
+tinyCPU에서video-prior/fixed-loss스케일/동일view/train-skip-resume/eval-reuse/순서다른paired비교/코랩7셀구문통과.
+실제클래스보정GPU학습은아직실행하지않았다. 새TAR/Drive변경/Gitpush/자동화없음.
