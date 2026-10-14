@@ -244,3 +244,21 @@ source6000/epoch, val1200, 최대10/patience3, seed42, 기존trainable범위/BN�
 ROC지표는기술통계이며test기반배포threshold선택없음. 대상영상source/driver관계는기존filename후보제외한계유지.
 tinyCPU에서video-prior/fixed-loss스케일/동일view/train-skip-resume/eval-reuse/순서다른paired비교/코랩7셀구문통과.
 실제클래스보정GPU학습은아직실행하지않았다. 새TAR/Drive변경/Gitpush/자동화없음.
+
+## Aug·혼합 타깃 UDA·Aug+UDA 균형 비교 준비 (2026-10-14)
+사용자 승인으로 scripts/ffpp_c23_mixed_balanced_uda.py 및 train_test_ffpp_c23_mixed_balanced_uda_seed42 MD/코랩 추가.
+세 FF++ baseline에서 augmentation/uda_mixed_balanced/uda_aug_mixed_balanced 각1개, 총9개 run을 새로 학습한다.
+기존 UDA 고정 target5000장 및 FF++ val1200장을 재사용한다. target 비테스트 정답은 배치 Real/Fake5:5 샘플링에만 사용하고 loss/모델에는 전달하지 않는다.
+클래스 내부 영상균등 반복선택이며 source6000장당 target6000회(Real3000/Fake3000), 고유이미지5000장 자체를5:5로 바꾸는 것은 아니다.
+타깃은 원본/약/중/강 각25% 무작위 선택, 1회노출당1view, 보정정보/원본짝 미제공. fallback unchanged.
+Aug 및Aug+UDA source는 clean+random3strength; UDA source는clean. source epoch순서와 UDA 두전략의 target경로/변형계획 동일.
+Aug+UDA의 source2view/target1view domain loss는각domain평균후1/2씩 합산. 추가view로계산량더큼, 동일계산량주장없음.
+최대10/patience3/seed42/batch16/LR1e-5/BN고정 및clean source validation macro4 AUC선택 유지.
+기존공식test8288장×4조건으로새9모델36조건평가, baseline저장결과재사용. FPR/FNR/평균오류율/AUC frame지표.
+기존source split/metadata/코드/결과는보존하며새 ffpp_c23_mixed_balanced_uda_v1 출력사용. 새TAR/Drive변경/Gitpush없음.
+작은CPU fixture에서배치정확한균형/4조건분포/동일노출/손실계산/세전략학습·완료skip/중단후정확한가중치재개/평가재사용/코랩7셀구문 통과.
+전체3백본GPU학습은실행하지않았다. 기존UDA대비변형혼합과샘플링을함께바꾸므로각변경의개별인과효과는분리하지못한다.
+
+사용자 후속 요청으로 새 학습에서Aug를 제외했다. 기본실행은세모델×UDA/Aug+UDA=6run,공식test새추론24조건.
+코랩마지막셀에서기존 ffpp_c23_smoothing_adaptation_v1/seed42 하위Aug JSON을동일평가프로토콜확인후재사용하며비교CSV저장.
+기존Aug와신규학습배치순서차이는참고비교의한계로명시한다.
