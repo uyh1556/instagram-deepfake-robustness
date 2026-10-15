@@ -286,3 +286,19 @@ cleanFNR7.67→13.50/12.67/14.67%로각각+2%p제한을넘어후보가모두제�
 last.pt실제epoch를검사한뒤작은모듈만로컬임시폴더에서기존평가엔진으로읽어평가하며원본best/last/completed는변경하지않는다.
 새출력diagnostic_epoch3에고정epoch진단임을기록한다. 선택기준변경/재학습/테스트기반best선택없음.
 tinyCPU에서고정epoch평가·재사용·기존파일해시보존·잘못된epoch거부·9코랩셀검사를수행한다. 실제GPU epoch3평가는아직없음.
+
+## C: 학습된 B에서 비라벨 타깃 일관성 추가 (2026-10-15)
+Drive후속결과확인: B Xception5epoch종료/best2, DINO9epoch종료/best6, CLIP3epoch종료/best0.
+사용자가 C 진행과 'B best epoch0이면 last.pt에서 시작, 그 외 best.pt' 규칙을 명시 승인했다.
+ffpp_c23_smoothing_consistency_c.py 및 train_test_ffpp_c23_consistency_c_seed42 MD/코랩7셀 추가.
+따라서현재시작점Xception best2/CLIP last3/DINO best6. B파일/기존학습코드SHA는보존한다.
+본체·원래분류기고정/보정모듈만학습. B source손실+0.1normalizedHuber(target두view)+1normalizedHuber(observedtarget점수,frozenB시작점점수).
+CDF기존frozen5,000장을재사용, 기존GT보조5:5샘플러6,000회/epoch. 라벨은샘플러에만쓰며모델/손실에전달하지않는다.
+Observed는원본/약/중/강각25%; second는observed에strength.25를추가. 이미강한스무딩인입력에도약한추가변형을적용한다.
+깨끗한target원본짝을제공하는설정아님. fallback유지. 일관성만으로올바른절대점수/경계를식별할수없다는한계를명시한다.
+source6,000+target6,000회, 각2view로24,000views/epoch. 추가계산량은B보다크다. 새AdamW LR1e-4, 최대10/patience3/seed42.
+기존동일sourceval1,200×4조건BER와guard를C시작B대비적용. Cepoch0은학습된B이며보정값0 baseline이아니다.
+평가는같은CDF공식test8,288×4조건에서B실제시작모델과C를한번의본체forward로비교. Baseline/Aug저장결과재사용.
+C-vs-B차이에는추가source학습효과도포함되며타깃항목의독립기여로단정하지않는다. 새TAR없음/Gitpush없음/Drive변경없음.
+tinyCPU로best/last분기,3모델학습/완료skip,정확한재개,5:5샘플링,스무딩중첩,손실계산,teacher고정,평가재사용,B파일보존,7셀구문검사통과.
+전체GPU C학습은아직실행하지않았다.
