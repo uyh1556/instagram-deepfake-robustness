@@ -206,11 +206,35 @@ class PreservationTests(unittest.TestCase):
         from IPython.core.inputtransformer2 import TransformerManager
         nb = json.loads((b.ROOT/'notebooks/train_test_ffpp_c23_preservation_b_seed42.ipynb').read_text())
         cells = [c for c in nb['cells'] if c['cell_type'] == 'code']
-        self.assertEqual(len(cells), 8)
+        self.assertEqual(len(cells), 9)
         for cell in cells:
             code = ''.join(cell['source'])
             self.assertFalse(code.lstrip().startswith('python\n'))
             ast.parse(TransformerManager().transform_cell(code))
+
+    def test_fixed_epoch_diagnostic_preserves_existing_files(self):
+        import evaluate_preservation_b_epoch as diagnostic
+        a = self.args; a.models = ['clip_b16']; a.epoch = 2
+        b.train(a)
+        ea = Namespace(data_root=a.target_root, manifest=self.test, protocol=a.protocol, cache_root=a.cache_root,
+            output_root=a.baseline_evaluation_root, runs_root=a.baseline_runs_root, models=a.models,
+            seed=42, batch_size=4, workers=0, device='cpu')
+        b.evaluation.prepare(ea); b.evaluation.evaluate(ea); b.evaluate(a)
+        run = a.runs_root/b.run_name('clip_b16', 42)
+        paths = [run/'best.pt', run/'last.pt', run/'completed.json',
+                 a.output_root/'clip_b16_preservation_b_normal.json']
+        hashes = {str(p): b.base.common.digest(p) for p in paths}
+        diagnostic.evaluate(a)
+        output = a.output_root/'diagnostic_epoch2'
+        report = json.loads((output/'clip_b16_preservation_b_normal.json').read_text())
+        self.assertEqual(report['evaluated_epoch'], 2)
+        self.assertEqual(report['checkpoint_kind'], 'last.pt')
+        self.assertEqual(report['checkpoint_sha256'], hashes[str(run/'last.pt')])
+        diagnostic.evaluate(a)
+        self.assertEqual(hashes, {str(p): b.base.common.digest(p) for p in paths})
+        a.epoch = 3
+        with self.assertRaisesRegex(ValueError, 'last.pt is epoch 2'):
+            diagnostic.evaluate(a)
 
 
 if __name__ == '__main__':

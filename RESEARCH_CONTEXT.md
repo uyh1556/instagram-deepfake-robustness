@@ -277,3 +277,12 @@ CDF학습 없음, non-test TAR불필요. 기존 공식test TAR1개로8,288장×4
 로컬tinyCPU로3모델경로 학습/완료skip/epoch0선택/본체고정/손실계산/동일가중치중단재개/평가재사용/fallback/코랩8셀 검사통과.
 실제3백본구조에서도 특징2048/512/768,0보정출력동일,보정모듈역전파와본체gradient없음을확인했다(랜덤가중치구조검사).
 실제 GPU정식B학습은 아직 실행하지 않았다. Gitpush/새TAR/Drive수정/자동화없음.
+
+## CLIP B epoch3 진단 평가 추가 (2026-10-15)
+Drive 완료/history 확인: CLIP B는3epoch종료/선택epoch0. Source4조건BER는21.48→17.31/17.42/16.13%였으나,
+cleanFNR7.67→13.50/12.67/14.67%로각각+2%p제한을넘어후보가모두제외됐다. CDF에선epoch0을평가하여Baseline과동일.
+사용자가epoch3평가를요청하여evaluate_preservation_b_epoch.py와같은코랩Cell9를추가했다.
+기존학습스크립트SHA25e392891daabde15bc3bbfb046de4a4c0119cbe2886efd074889aafb3811228을그대로보존한다.
+last.pt실제epoch를검사한뒤작은모듈만로컬임시폴더에서기존평가엔진으로읽어평가하며원본best/last/completed는변경하지않는다.
+새출력diagnostic_epoch3에고정epoch진단임을기록한다. 선택기준변경/재학습/테스트기반best선택없음.
+tinyCPU에서고정epoch평가·재사용·기존파일해시보존·잘못된epoch거부·9코랩셀검사를수행한다. 실제GPU epoch3평가는아직없음.
