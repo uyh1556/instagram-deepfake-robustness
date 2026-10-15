@@ -262,3 +262,18 @@ Aug+UDA의 source2view/target1view domain loss는각domain평균후1/2씩 합산
 사용자 후속 요청으로 새 학습에서Aug를 제외했다. 기본실행은세모델×UDA/Aug+UDA=6run,공식test새추론24조건.
 코랩마지막셀에서기존 ffpp_c23_smoothing_adaptation_v1/seed42 하위Aug JSON을동일평가프로토콜확인후재사용하며비교CSV저장.
 기존Aug와신규학습배치순서차이는참고비교의한계로명시한다.
+
+## B: 고정 탐지기의 스무딩 판단 보존 실험 준비 (2026-10-15)
+사용자 승인으로 scripts/ffpp_c23_smoothing_preservation.py 및 train_test_ffpp_c23_preservation_b_seed42 MD/코랩 추가.
+세 FF++ c23 baseline의 인코더·원래 분류기·정규화 통계를 전부 고정하고, 32차원 hidden의 작은 residual margin 모듈만 학습한다.
+마지막 층0초기화. scale=max(1, 첫 source epoch clean |margin| q75), 보정 한도±2scale, 특징LN(affine없음)+margin/scale을 사용.
+손실은 clean/smoothed 평균BCE + normalized Huber(smooth corrected, frozen clean) + normalized Huber(clean corrected, frozen clean), 가중치각1.
+기존 source6,000/epoch와 seed별 회전/영상균형/paired flip, 약중강 무작위 스무딩을 유지. 기존 동일 FF++ val1,200장×4조건.
+선택은4조건평균BER최소로 변경하며 epoch0도 후보. cleanBER+1%p, cleanFPR/FNR각+2%p, clean/평균macroAUC−0.005 이내만 허용.
+기존 Aug의 cleanAUC 선택과 다르므로 참고 비교이며, B항목 기여 확인에는 동일 선택의 A가 추후 필요.
+최대10epoch/patience3/seed42, batch16, 보정모듈AdamW LR1e-3. frozen FP32 특징을 로컬에 캐시하고 원본 데이터/기존run은 변경하지 않는다.
+CDF학습 없음, non-test TAR불필요. 기존 공식test TAR1개로8,288장×4조건평가, baseline/Aug저장결과 재사용.
+새runs/manifests/evaluations는ffpp_c23_smoothing_preservation_b_v1. 작은모듈만checkpoint에저장해원래baseline도필요하다.
+로컬tinyCPU로3모델경로 학습/완료skip/epoch0선택/본체고정/손실계산/동일가중치중단재개/평가재사용/fallback/코랩8셀 검사통과.
+실제3백본구조에서도 특징2048/512/768,0보정출력동일,보정모듈역전파와본체gradient없음을확인했다(랜덤가중치구조검사).
+실제 GPU정식B학습은 아직 실행하지 않았다. Gitpush/새TAR/Drive수정/자동화없음.
