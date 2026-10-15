@@ -26,6 +26,7 @@ class ConsistencyTests(unittest.TestCase):
         self.args, self.root = a, root = self.fixture.args, self.fixture.root
         self.b_hashes = {str(p): c.base.common.digest(p) for p in a.baseline_runs_root.rglob('*.pt')}
         a.b_evaluation_root = None
+        a.selection_policy = 'guarded'
         a.runs_root, a.manifest_root, a.output_root = root/'c_runs', root/'c_manifests', root/'c_results'
         a.learning_rate, a.target_images, a.target_weight, a.extra_strength = 1e-3, 8, .1, .25
         a.uda_manifest_dir = root/'old_uda'; a.uda_manifest_dir.mkdir()
@@ -81,13 +82,27 @@ class ConsistencyTests(unittest.TestCase):
         losses[0].backward()
         self.assertTrue(all(torch.isfinite(p.grad).all() for p in s.parameters()))
 
+    def test_ber_only_ignores_guards_for_every_model(self):
+        a = self.args
+        for model in c.base.PREPROCESS:
+            a.models = [model]
+            a.selection_policy = 'ber_only'
+            with patch.object(c.b, 'eligible', side_effect=AssertionError('Guard must not run')):
+                self.assertTrue(c.selection_allowed({}, {}, a))
+        a.selection_policy = 'guarded'
+        with patch.object(c.b, 'eligible', return_value=False):
+            self.assertFalse(c.selection_allowed({}, {}, a))
+
     def test_three_model_train_skip_resume_eval_and_notebook(self):
         a = self.args
+        a.selection_policy = 'ber_only'
         c.train(a); c.train(a)
         for name in a.models:
             run = a.runs_root/c.run_name(name, 42)
             state = torch.load(run/'last.pt', weights_only=True)
             self.assertEqual(state['epoch'], 2)
+            self.assertEqual(state['config']['selection']['policy'], 'ber_only')
+            self.assertFalse(state['config']['selection']['guards_enabled'])
             for h in state['history']:
                 self.assertEqual(h['target_real_exposures'], h['target_fake_exposures'])
         self.assertNotIn('class_index', pd.read_csv(a.manifest_root/'target_unlabelled.csv').columns)
@@ -120,7 +135,7 @@ class ConsistencyTests(unittest.TestCase):
         self.assertEqual(len(table[table.strategy.isin(['baseline', 'preservation_c'])]), 24)
         self.assertEqual(self.b_hashes, {str(p): c.base.common.digest(p) for p in a.baseline_runs_root.rglob('*.pt')})
         from IPython.core.inputtransformer2 import TransformerManager
-        nb = json.loads((c.b.ROOT/'notebooks/train_test_ffpp_c23_consistency_c_seed42.ipynb').read_text())
+        nb = json.loads((c.b.ROOT/'notebooks/train_test_ffpp_c23_consistency_c_ber_only_seed42.ipynb').read_text())
         cells = [cell for cell in nb['cells'] if cell['cell_type'] == 'code']
         self.assertEqual(len(cells), 7)
         for cell in cells:

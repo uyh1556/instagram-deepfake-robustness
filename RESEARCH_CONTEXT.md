@@ -314,3 +314,13 @@ B 비교는 저장된 검증 선택 평가만 읽는다. CLIP B epoch3 진단을
 source 최대 예산은 같지만 실제 조기종료 시점은 다를 수 있고 target feature 추출 추가 계산량은 존재한다.
 CPU tiny-model 검사: 3모델 학습/완료 skip/정확한 중단 재개, source 배치 순서, target 5:5 및 손실, 평가 재사용, Baseline 보존, 코랩7셀 구문 검사를 통과했다.
 전체 GPU 독립 C 실험은 실행하지 않았다. Git push 및 Drive 변경 없음.
+
+## C 세 모델 BER-only 선택 실험 (2026-10-15)
+사용자가 CLIP을 포함한 전체 세 모델의 선택 제한 완화를 승인했다.
+C에 --selection-policy ber_only를 추가했다. 기존 기본값 guarded는 유지한다. BER-only에서는 원본 BER/FPR/FNR 및 원본/평균 AUC guard를 모두 비활성화한다.
+FF++ 검증 1,200장×4조건 평균 BER만으로 best와 조기종료를 결정한다. epoch0 후보, patience3/min_delta0.0001, 최대10epoch는 유지한다.
+새 MD/코랩 train_test_ffpp_c23_consistency_c_ber_only_seed42는 세 모델 모두 Baseline부터 다시 학습하고 평가한다.
+출력 roots는 ffpp_c23_smoothing_consistency_c_ber_only_v3로 분리하며 run basename은 내부 independent_v2 프로토콜 이름을 유지한다. config.selection에 실제 policy를 기록한다.
+기존 B/C 데이터·checkpoint는 변경하지 않았다. 기존 B는 guard가 있으므로 새 C와 동일 선택 기준의 공정 비교로 해석하지 않는다.
+코드 SHA가 바뀌므로 과거 C 학습 재개/평가에는 당시 코드가 필요하다. 새 코랩은 새 경로에서 시작한다.
+변경은 관찰 결과를 보고 정한 탐색적 규칙임을 문서화했다. GPU 학습/Drive 변경/Git push는 수행하지 않았다.

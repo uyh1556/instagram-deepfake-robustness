@@ -24,6 +24,10 @@ def run_name(name, seed):
     return f'{name}_{PROTOCOL}_seed{seed}'
 
 
+def selection_allowed(values, reference, args):
+    return args.selection_policy == 'ber_only' or b.eligible(values, reference, args)
+
+
 def source_order(args, count, seed):
     """Match B's shuffled SOURCE batches while preserving balanced TARGET batch order."""
     loader = DataLoader(TensorDataset(torch.arange(count)), batch_size=args.batch_size,
@@ -127,6 +131,12 @@ def train(args):
             source_batch_order='identical B shuffled source order; target batches remain exactly balanced',
             code_sha256=base.common.digest(Path(__file__)), b_code_sha256=base.common.digest(Path(b.__file__)),
             mixed_code_sha256=base.common.digest(Path(mixed.__file__)))
+        config['selection']['policy'] = args.selection_policy
+        config['selection']['guards_enabled'] = args.selection_policy == 'guarded'
+        if args.selection_policy == 'ber_only':
+            config['selection'] = {'policy': 'ber_only', 'guards_enabled': False,
+                'metric': 'minimum four-condition source validation mean BER; epoch0 eligible',
+                'patience_min_delta': 1e-4}
         identity = evaluation.key(config)
         run = args.runs_root/run_name(name, args.seed)
         run.mkdir(parents=True, exist_ok=True)
@@ -201,7 +211,7 @@ def train(args):
                 totals += np.array([float(v.detach()) for v in losses])*len(values[2])
                 count += len(values[2])
             validation = b.validate(student, vf, vm, val, smoothing, args.device)
-            allowed = b.eligible(validation, reference, args)
+            allowed = selection_allowed(validation, reference, args)
             improved = allowed and validation['mean_ber'] < best-1e-12
             if improved:
                 best = validation['mean_ber']
@@ -377,6 +387,8 @@ def main():
     p.add_argument('--target-images', type=int, default=5000)
     p.add_argument('--target-weight', type=float, default=.1)
     p.add_argument('--extra-strength', type=float, default=.25)
+    p.add_argument('--selection-policy', choices=['guarded', 'ber_only'], default='guarded',
+                   help='ber_only disables all clean/AUC eligibility guards; use a new run root')
     p.set_defaults(learning_rate=1e-3)
     args = p.parse_args()
     if args.device == 'cuda' and not torch.cuda.is_available():
