@@ -1,4 +1,4 @@
-# FFPP_c23_Smoothing_Consistency_C_Independent_Seed42
+# FFPP_c23_Smoothing_Consistency_C_Seed42
 
 세 모델의 **FF++ Baseline → 독립적인 C 학습 → CDF 원본·스무딩 평가**. 새 코드를 GitHub에 push한 뒤 실행한다. MODELS만 바꾸면 모델별로 코랩을 나눌 수 있다.
 
@@ -8,10 +8,10 @@
 - 타깃은 원본·약·중·강 중 하나를25%씩 선택한 observed image와, 거기에 약한 스무딩(strength0.25)을 추가한 이미지의2view. 모델/손실에 스무딩 여부/강도/타깃라벨을 전달하지 않는다. observed가 이미 스무딩일 수 있으며 깨끗한 원본짝을 받는 설정이 아니다. 두 번 적용한 스무딩은 원래4조건과 다른 변형일 수 있다. fallback은 그대로 둔다.
 - C 손실 = B의 source 손실 + **0.1×target pair normalized Huber**. 두 target view 모두에 gradient가 흐른다. B 점수 유지 손실은 제거한다. DANN/entropy minimization/pseudo-label/50:50 예측 강제는 사용하지 않는다. 일관성만으로 올바른 타깃 절대 점수가 식별되는 것은 아니다.
 - 최대10epoch/patience3/seed42/batch16. frozen FP32 feature를 로컬 캐시한다. 계산량은 source2view+target2view로24,000views/epoch이며 B보다 크다. 검증 특징4조건은 한 번 계산하여 재사용한다. 학습·평가 진행률은10초 간격으로 갱신한다.
-- 검증은 B와 동일 FF++1,200장×4조건. 평균BER최소, cleanBER+1%p/FPR·FNR각+2%p/AUC−0.005 guard는 **원래 Baseline 대비** 적용한다. C epoch0은 보정값0인 Baseline이다. epoch0이 선택되면 학습된 last.pt도 별도 진단 결과로 자동 평가하되 best로 바꾸지 않는다.
+- 검증은 동일 FF++1,200장×4조건. **4조건 평균 BER만으로 best 선택·조기종료**한다. 원본 BER/FPR/FNR 및 AUC 제한은 모두 비활성화한다. epoch0도 후보이며, 0.0001 이상 개선이 3회 연속 없으면 종료한다. 원본 성능 변화와 AUC는 결과로 별도 보고한다.
 - CDF공식test8,288장×4조건, threshold0.5, FP32/frame FPR·FNR·BER·AUC. Baseline/Aug/B는 기존 저장결과를 읽는다. B는 검증으로 선택된 결과만 비교하며 CLIP epoch3 진단 결과를 best로 대체하지 않는다.
-- B와 초기화·source 목록·배치 순서·최대 epoch·검증 규칙을 맞추지만 조기종료 시점과 실제 계산량은 다를 수 있다. 이미 반복 확인한 CDF test는 개발평가 한계를 유지한다. 기존 결과는 보존한다.
-- 새 TAR 업로드 없음. 기존 FF++/CDF TAR와 UDA manifest를 사용한다. 새 출력은 `ffpp_c23_smoothing_consistency_c_independent_v2`이다.
+- B와 초기화·source 목록·배치 순서·최대 epoch는 같지만, **이번 C는 선택 기준을 완화했으므로 기존 B와 공정한 동일 기준 비교가 아니다.** 실제 종료 시점/계산량도 다를 수 있다. 선택 기준 변경은 결과 확인 후의 탐색적 변경이며 CDF test는 개발평가로 취급한다.
+- 새 TAR 업로드 없음. 기존 FF++/CDF TAR와 UDA manifest를 사용한다. 새 출력은 `ffpp_c23_smoothing_consistency_c_ber_only_v3`이다.
 
 ## Cell 1 — 설치
 
@@ -42,18 +42,18 @@ SOURCE_ROOT=Path('/content/ffpp_c23_native_roi16_v1')
 TARGET_ROOT=Path('/content/celebdf_v2_face_crops16_v1')
 BASELINE_DRIVE_RUNS=ROOT/'runs/ffpp_c23_4methods_baseline_v1'
 BASELINE_RUNS=Path('/content/ffpp_c23_baseline_eval_runs')
-RUNS_ROOT=ROOT/'runs/ffpp_c23_smoothing_consistency_c_independent_v2'
+RUNS_ROOT=ROOT/'runs/ffpp_c23_smoothing_consistency_c_ber_only_v3'
 UDA_MANIFEST_DIR=ROOT/'manifests/ffpp_c23_smoothing_adaptation_v1/seed42/xception_clip_b16'
 GROUP='_'.join(MODELS)
-MANIFEST_ROOT=ROOT/'manifests/ffpp_c23_smoothing_consistency_c_independent_v2/seed42'/GROUP
-EVALUATION_ROOT=ROOT/'evaluations/ffpp_c23_smoothing_consistency_c_independent_v2/seed42'/GROUP
+MANIFEST_ROOT=ROOT/'manifests/ffpp_c23_smoothing_consistency_c_ber_only_v3/seed42'/GROUP
+EVALUATION_ROOT=ROOT/'evaluations/ffpp_c23_smoothing_consistency_c_ber_only_v3/seed42'/GROUP
 B_EVALUATION=ROOT/'evaluations/ffpp_c23_smoothing_preservation_b_v1/seed42'
 BASELINE_EVALUATION=ROOT/'evaluations/ffpp_c23_baselines_celebdf_official_smoothing_v1/seed42'
 REFERENCE_EVALUATIONS=ROOT/'evaluations/ffpp_c23_smoothing_adaptation_v1/seed42'
 FEATURE_CACHE=Path('/content/preservation_b_frozen_features_v1')
 CACHE_ROOT=Path('/content/celebdf_official_smoothing_cache_v1')
 MODEL_ARGS=' '.join(MODELS)
-COMMON=f'--models {MODEL_ARGS} --seed 42 --source-root "{SOURCE_ROOT}" --target-root "{TARGET_ROOT}" --baseline-runs-root "{BASELINE_RUNS}" --b-evaluation-root "{B_EVALUATION}" --runs-root "{RUNS_ROOT}" --uda-manifest-dir "{UDA_MANIFEST_DIR}" --manifest-root "{MANIFEST_ROOT}" --feature-cache-root "{FEATURE_CACHE}" --output-root "{EVALUATION_ROOT}" --cache-root "{CACHE_ROOT}" --baseline-evaluation-root "{BASELINE_EVALUATION}" --reference-evaluations "{REFERENCE_EVALUATIONS}" --workers 2'
+COMMON=f'--models {MODEL_ARGS} --seed 42 --source-root "{SOURCE_ROOT}" --target-root "{TARGET_ROOT}" --baseline-runs-root "{BASELINE_RUNS}" --b-evaluation-root "{B_EVALUATION}" --runs-root "{RUNS_ROOT}" --uda-manifest-dir "{UDA_MANIFEST_DIR}" --manifest-root "{MANIFEST_ROOT}" --feature-cache-root "{FEATURE_CACHE}" --output-root "{EVALUATION_ROOT}" --cache-root "{CACHE_ROOT}" --baseline-evaluation-root "{BASELINE_EVALUATION}" --reference-evaluations "{REFERENCE_EVALUATIONS}" --selection-policy ber_only --workers 2'
 for name in ['protocol.json','target_unlabelled.csv','source_validation.csv']:
     assert (UDA_MANIFEST_DIR/name).is_file(),UDA_MANIFEST_DIR/name
 print('Models:',MODELS,'| C starts independently from FF++ Baseline',flush=True)
@@ -122,11 +122,11 @@ assert _exit_code==0,'C 평가 실패: 위 오류 확인 후 Cell 6 재실행'
 import csv
 from IPython.display import Markdown,display
 rows=list(csv.DictReader((EVALUATION_ROOT/'comparison.csv').open()))
-labels={'baseline':'Baseline','augmentation':'기존 Aug','preservation_b':'B (검증 선택)','preservation_c':'C (검증 선택)'}
+labels={'baseline':'Baseline','augmentation':'기존 Aug','preservation_b':'B (검증 선택)','preservation_c':'C (BER 선택)'}
 conditions={'normal':'원본','smooth_weak':'약','smooth_medium':'중','smooth_strong':'강'}
 for model in MODELS:
     done=json.loads((RUNS_ROOT/f'{model}_ffpp_c23_smoothing_consistency_c_independent_v2_seed42/completed.json').read_text())
-    table=[f'### {model} — 독립 C 선택 epoch {done["selected_epoch"]}', '',
+    table=[f'### {model} — BER-only C 선택 epoch {done["selected_epoch"]}', '',
            '|방법|조건|FPR|FNR|BER|AUC|','|---|---|---:|---:|---:|---:|']
     for strategy in dict.fromkeys(r['strategy'] for r in rows if r['model']==model):
         for r in rows:

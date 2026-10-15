@@ -324,3 +324,10 @@ FF++ 검증 1,200장×4조건 평균 BER만으로 best와 조기종료를 결정
 기존 B/C 데이터·checkpoint는 변경하지 않았다. 기존 B는 guard가 있으므로 새 C와 동일 선택 기준의 공정 비교로 해석하지 않는다.
 코드 SHA가 바뀌므로 과거 C 학습 재개/평가에는 당시 코드가 필요하다. 새 코랩은 새 경로에서 시작한다.
 변경은 관찰 결과를 보고 정한 탐색적 규칙임을 문서화했다. GPU 학습/Drive 변경/Git push는 수행하지 않았다.
+
+## 기존 C 정리 및 코랩 이름 통합 (2026-10-15)
+사용자의 명시적 삭제 요청으로 Drive 프로젝트의 runs/manifests/evaluations 아래 ffpp_c23_smoothing_consistency_c_independent_v2 폴더 3개를 영구 삭제했다.
+삭제 폴더 ID: runs=1jFiVTEG4qpvl0gYJ6y2ZzCYKOpDIvgE3, manifests=15yy4a2ghQGu5K9wf7p6D2d1z3hBAkS3J, evaluations=135ZCMtl-r_l2rMbIg49lSoUMpjew3X-n.
+Baseline/B/공유 데이터와 신규 ber_only_v3 출력 경로는 삭제하지 않았다. Colab 런타임의 실행 프로세스·로컬 캐시는 원격으로 정리하지 않았다.
+BER-only MD/코랩 내용을 기존 train_test_ffpp_c23_consistency_c_seed42 이름으로 통합하고 별도 _ber_only_seed42 파일은 제거했다.
+현재 기존 C 이름의 코랩이 세 모델 전체 --selection-policy ber_only를 사용하며 출력은 ber_only_v3로 분리한다. Git push는 하지 않았다.

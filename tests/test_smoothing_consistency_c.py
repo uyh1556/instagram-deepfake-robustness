@@ -135,7 +135,7 @@ class ConsistencyTests(unittest.TestCase):
         self.assertEqual(len(table[table.strategy.isin(['baseline', 'preservation_c'])]), 24)
         self.assertEqual(self.b_hashes, {str(p): c.base.common.digest(p) for p in a.baseline_runs_root.rglob('*.pt')})
         from IPython.core.inputtransformer2 import TransformerManager
-        nb = json.loads((c.b.ROOT/'notebooks/train_test_ffpp_c23_consistency_c_ber_only_seed42.ipynb').read_text())
+        nb = json.loads((c.b.ROOT/'notebooks/train_test_ffpp_c23_consistency_c_seed42.ipynb').read_text())
         cells = [cell for cell in nb['cells'] if cell['cell_type'] == 'code']
         self.assertEqual(len(cells), 7)
         for cell in cells:
