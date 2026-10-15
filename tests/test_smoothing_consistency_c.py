@@ -13,7 +13,7 @@ import torch
 from PIL import Image
 from torch import nn
 
-from test_smoothing_preservation import PreservationTests
+import test_smoothing_preservation as fixtures
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'scripts'))
 import ffpp_c23_smoothing_consistency_c as c
@@ -21,24 +21,13 @@ import ffpp_c23_smoothing_consistency_c as c
 
 class ConsistencyTests(unittest.TestCase):
     def setUp(self):
-        self.fixture = PreservationTests()
+        self.fixture = fixtures.PreservationTests()
         self.fixture.setUp()
         self.args, self.root = a, root = self.fixture.args, self.fixture.root
-        a.b_runs_root = a.runs_root
-        c.b.train(a)
-        # Construct both initializer branches without changing any B protocol.
-        for name in ['xception', 'dinov2_b14']:
-            run = a.b_runs_root/c.b.run_name(name, 42)
-            best = torch.load(run/'best.pt', weights_only=True)
-            best['epoch'] = 1
-            best['correction_state_dict']['net.2.bias'].fill_(.02)
-            torch.save(best, run/'best.pt')
-            done = json.loads((run/'completed.json').read_text())
-            done['selected_epoch'], done['epoch_zero_selected'] = 1, False
-            (run/'completed.json').write_text(json.dumps(done))
-        self.b_hashes = {str(p): c.base.common.digest(p) for p in a.b_runs_root.rglob('*.pt')}
+        self.b_hashes = {str(p): c.base.common.digest(p) for p in a.baseline_runs_root.rglob('*.pt')}
+        a.b_evaluation_root = None
         a.runs_root, a.manifest_root, a.output_root = root/'c_runs', root/'c_manifests', root/'c_results'
-        a.learning_rate, a.target_images, a.target_weight, a.trust_weight, a.extra_strength = 1e-4, 8, .1, 1., .25
+        a.learning_rate, a.target_images, a.target_weight, a.extra_strength = 1e-3, 8, .1, .25
         a.uda_manifest_dir = root/'old_uda'; a.uda_manifest_dir.mkdir()
         for kind in ['real', 'fake']:
             rows = []
@@ -60,9 +49,9 @@ class ConsistencyTests(unittest.TestCase):
 
     def test_initializer_pair_composition_balance_and_loss(self):
         a = self.args
-        for name, file, epoch in [('xception', 'best.pt', 1), ('clip_b16', 'last.pt', 2), ('dinov2_b14', 'best.pt', 1)]:
-            state, meta = c.b_start(a, name)
-            self.assertEqual((meta['checkpoint_file'], state['epoch']), (file, epoch))
+        dataset_order = torch.utils.data.TensorDataset(torch.arange(16))
+        expected = torch.cat([v for (v,) in c.base.common.make_loader(dataset_order, a, True, 42)])
+        self.assertTrue(torch.equal(c.source_order(a, 16, 42), expected))
         pool, val, target, cfg, _ = c.mixed.sda.inputs(a)
         sampled = c.b.adaptation.balanced_source(pool, a.source_images, 42)
         _, transform = c.base.build_model('xception', pretrained=False)
@@ -80,19 +69,16 @@ class ConsistencyTests(unittest.TestCase):
             self.assertTrue(torch.equal(second, transform(extra)))
         self.assertEqual(len(dataset[0]), 2)  # neither label nor strength is returned
         s = c.b.Correction(4, 8)
-        teacher = copy.deepcopy(s).requires_grad_(False)
         sf, tf = torch.randn(4, 2, 4), torch.randn(4, 2, 4)
         sm, tm, y = torch.randn(4, 2), torch.randn(4, 2), torch.tensor([0, 1, 0, 1])
         with torch.no_grad():
             s.net[-1].bias.fill_(.02)
-        losses = c.loss_for(s, teacher, sf, sm, y, tf, tm, a)
+        losses = c.loss_for(s, sf, sm, y, tf, tm, a)
         source = c.b.loss_for(s, sf, sm, y, 1., 1.)[0]
         observed, extra = s(tf[:, 0], tm[:, 0]), s(tf[:, 1], tm[:, 1])
         consistency = nn.functional.smooth_l1_loss(observed/s.scale, extra/s.scale)
-        trust = nn.functional.smooth_l1_loss(observed/s.scale, teacher(tf[:, 0], tm[:, 0])/s.scale)
-        self.assertTrue(torch.allclose(losses[0], source+.1*consistency+trust))
+        self.assertTrue(torch.allclose(losses[0], source+.1*consistency))
         losses[0].backward()
-        self.assertTrue(all(p.grad is None for p in teacher.parameters()))
         self.assertTrue(all(torch.isfinite(p.grad).all() for p in s.parameters()))
 
     def test_three_model_train_skip_resume_eval_and_notebook(self):
@@ -130,8 +116,9 @@ class ConsistencyTests(unittest.TestCase):
         stamps = {p.name: p.stat().st_mtime_ns for p in a.output_root.glob('*preservation_c*.csv')}
         c.evaluate(a)
         self.assertEqual(stamps, {p.name: p.stat().st_mtime_ns for p in a.output_root.glob('*preservation_c*.csv')})
-        self.assertEqual(len(pd.read_csv(a.output_root/'comparison.csv')), 36)
-        self.assertEqual(self.b_hashes, {str(p): c.base.common.digest(p) for p in a.b_runs_root.rglob('*.pt')})
+        table = pd.read_csv(a.output_root/'comparison.csv')
+        self.assertEqual(len(table[table.strategy.isin(['baseline', 'preservation_c'])]), 24)
+        self.assertEqual(self.b_hashes, {str(p): c.base.common.digest(p) for p in a.baseline_runs_root.rglob('*.pt')})
         from IPython.core.inputtransformer2 import TransformerManager
         nb = json.loads((c.b.ROOT/'notebooks/train_test_ffpp_c23_consistency_c_seed42.ipynb').read_text())
         cells = [cell for cell in nb['cells'] if cell['cell_type'] == 'code']

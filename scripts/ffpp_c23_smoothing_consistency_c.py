@@ -1,6 +1,5 @@
-"""C: continue trained B correction with bounded unlabeled-target consistency."""
+"""C v2: independent FF++ baseline initialization + source preservation + target consistency."""
 import argparse
-import copy
 import json
 from collections import Counter
 from pathlib import Path
@@ -17,7 +16,7 @@ import ffpp_c23_smoothing_preservation as b
 import ffpp_c23_mixed_balanced_uda as mixed
 
 base, evaluation = b.base, b.evaluation
-PROTOCOL = 'ffpp_c23_smoothing_consistency_c_v1'
+PROTOCOL = 'ffpp_c23_smoothing_consistency_c_independent_v2'
 STRATEGY = 'preservation_c'
 
 
@@ -25,29 +24,11 @@ def run_name(name, seed):
     return f'{name}_{PROTOCOL}_seed{seed}'
 
 
-def b_start(args, name):
-    run = args.b_runs_root/b.run_name(name, args.seed)
-    config = json.loads((run/'config.json').read_text())
-    done = json.loads((run/'completed.json').read_text())
-    best = torch.load(run/'best.pt', map_location='cpu', weights_only=True)
-    if (best['epoch'] != done['selected_epoch'] or best['config'] != config
-            or best['identity'] != evaluation.key(config) or done['identity'] != best['identity']):
-        raise ValueError('B best/completion epoch mismatch')
-    filename = 'last.pt' if best['epoch'] == 0 else 'best.pt'
-    state = torch.load(run/filename, map_location='cpu', weights_only=True) if filename == 'last.pt' else best
-    if (state['config'] != config or state['identity'] != evaluation.key(config)
-            or done['identity'] != state['identity'] or config['model'] != name or config['seed'] != args.seed
-            or config['protocol'] != b.PROTOCOL or config['strategy'] != b.STRATEGY
-            or config['code_sha256'] != base.common.digest(Path(b.__file__))
-            or config['model_code_sha256'] != base.common.digest(Path(base.__file__))
-            or config['shared_code_sha256'] != base.common.digest(Path(base.common.__file__))
-            or config['smoothing_code_sha256'] != base.common.digest(b.ROOT/'scripts/smoothing_roi_pilot.py')
-            or state['epoch'] <= 0
-            or (filename == 'last.pt' and state['epoch'] != done['epochs_completed'])):
-        raise ValueError(f'Invalid trained B starting checkpoint: {run/filename}')
-    metadata = {'checkpoint_file': filename, 'epoch': state['epoch'], 'b_selected_epoch': best['epoch'],
-                'checkpoint_sha256': base.common.digest(run/filename), 'b_config': config}
-    return state, metadata
+def source_order(args, count, seed):
+    """Match B's shuffled SOURCE batches while preserving balanced TARGET batch order."""
+    loader = DataLoader(TensorDataset(torch.arange(count)), batch_size=args.batch_size,
+                        shuffle=True, num_workers=0, generator=torch.Generator().manual_seed(seed))
+    return torch.cat([indexes for (indexes,) in loader])
 
 
 class TargetPairs(torch.utils.data.Dataset):
@@ -110,15 +91,12 @@ def target_features(args, name, model, dataset, initial_hash, epoch):
     return features, margins
 
 
-def loss_for(student, teacher, sf, sm, labels, tf, tm, args):
+def loss_for(student, sf, sm, labels, tf, tm, args):
     source, cls, restore, clean = b.loss_for(student, sf, sm, labels, args.pair_weight, args.clean_weight)
     observed = student(tf[:, 0], tm[:, 0])
     extra = student(tf[:, 1], tm[:, 1])
     consistency = nn.functional.smooth_l1_loss(observed/student.scale, extra/student.scale)
-    with torch.no_grad():
-        reference = teacher(tf[:, 0], tm[:, 0])
-    trust = nn.functional.smooth_l1_loss(observed/student.scale, reference/student.scale)
-    return source + args.target_weight*consistency + args.trust_weight*trust, cls, restore, clean, consistency, trust
+    return source + args.target_weight*consistency, cls, restore, clean, consistency
 
 
 def train(args):
@@ -134,41 +112,21 @@ def train(args):
     base.common.json_write(path, info)
     target.drop(columns='class_index').to_csv(args.manifest_root/'target_unlabelled.csv', index=False)
     val.to_csv(args.manifest_root/'source_validation.csv', index=False)
-    # Verify every requested B checkpoint before expensive feature extraction.
     for name in args.models:
-        state, meta = b_start(args, name)
-        if (meta['b_config']['data']['val_paths_sha256'] != data['val_paths_sha256']
-                or meta['b_config']['data']['source_trainval_sha256'] != data['source_trainval_sha256']
-                or meta['b_config']['smoothing'] != smoothing):
-            raise ValueError('B/C source validation or smoothing protocol differs')
-        print(f'C start {name}: B {meta["checkpoint_file"]} epoch{meta["epoch"]}', flush=True)
-        del state
-    for name in args.models:
-        start_state, start_meta = b_start(args, name)
-        bc = start_meta['b_config']
         initial, initial_hash = evaluation.checkpoint(argparse.Namespace(runs_root=args.baseline_runs_root, seed=args.seed), name)
-        if bc['initial_checkpoint_sha256'] != initial_hash:
-            raise ValueError('B/C original baseline differs')
-        config = {'protocol': PROTOCOL, 'strategy': STRATEGY, 'model': name, 'seed': args.seed,
-                  'data': info, 'b_start': start_meta, 'initial_checkpoint_sha256': initial_hash,
-                  'preprocessing': base.PREPROCESS[name], 'smoothing': smoothing,
-                  'source_images_per_epoch': args.source_images, 'target_exposures_per_epoch': args.source_images,
-                  'image_views_per_epoch': 4*args.source_images,
-                  'epochs': args.epochs, 'patience': args.patience, 'batch_size': args.batch_size,
-                  'learning_rate': args.learning_rate, 'weight_decay': args.weight_decay,
-                  'pair_weight': args.pair_weight, 'clean_weight': args.clean_weight,
-                  'target_weight': args.target_weight, 'trust_weight': args.trust_weight,
-                  'extra_strength': args.extra_strength, 'backbone': 'frozen encoder and original classifier; FP32',
-                  'loss': 'B source loss + target_weight*normalized Huber(target pair) + trust_weight*normalized Huber(observed target, fixed B observed score)',
-                  'selection': {'reference': 'chosen trained B initializer, not zero-correction baseline',
-                                'metric': 'source four-condition minimum BER, C epoch0 eligible',
-                                'clean_ber_tolerance': args.clean_ber_tolerance,
-                                'clean_error_tolerance': args.clean_error_tolerance, 'auc_tolerance': args.auc_tolerance},
-                  'optimizer': 'new AdamW for C stage; B optimizer not resumed',
-                  'code_sha256': base.common.digest(Path(__file__)), 'b_code_sha256': base.common.digest(Path(b.__file__)),
-                  'mixed_code_sha256': base.common.digest(Path(mixed.__file__)),
-                  'torch': str(torch.__version__), 'opencv': evaluation.cv2.__version__,
-                  'versions': {p: b.importlib.metadata.version(p) for p in bc.get('versions', {}) if bc['versions'][p] is not None}}
+        if (initial['config']['data_hashes']['trainval'] != data['source_trainval_sha256']
+                or initial['config']['data_hashes']['protocol'] != data['source_protocol_sha256']):
+            raise ValueError('C source manifests differ from original FF++ baseline')
+        config = b.configuration(args, name, info, smoothing, initial_hash)
+        config.update(protocol=PROTOCOL, strategy=STRATEGY,
+            initialization='original FF++ baseline + fresh zero-output correction; no B checkpoint',
+            target_training=True, source_views_per_epoch=2*args.source_images, views_per_epoch=4*args.source_images,
+            target_exposures_per_epoch=args.source_images, image_views_per_epoch=4*args.source_images,
+            target_weight=args.target_weight, extra_strength=args.extra_strength,
+            target_loss='symmetric normalized Huber(observed target score, additionally smoothed target score); no target anchor/teacher',
+            source_batch_order='identical B shuffled source order; target batches remain exactly balanced',
+            code_sha256=base.common.digest(Path(__file__)), b_code_sha256=base.common.digest(Path(b.__file__)),
+            mixed_code_sha256=base.common.digest(Path(mixed.__file__)))
         identity = evaluation.key(config)
         run = args.runs_root/run_name(name, args.seed)
         run.mkdir(parents=True, exist_ok=True)
@@ -179,42 +137,45 @@ def train(args):
             if done['identity'] != identity or not (run/'best.pt').is_file():
                 raise ValueError('C completion mismatch')
             print('Skip completed C:', name, flush=True)
-            del initial, start_state
+            del initial
             continue
         base.common.json_write(run/'config.json', config)
         base.common.seed_all(args.seed)
         model, transform = b.frozen_model(args, name, initial)
         del initial
-        student = b.Correction(b.adaptation.FEATURES[name], bc['head']['hidden']).to(args.device)
-        student.load_state_dict(start_state['correction_state_dict'], strict=True)
-        teacher = copy.deepcopy(student).requires_grad_(False).eval()
-        del start_state
+        student = b.Correction(b.adaptation.FEATURES[name], args.hidden, bound=args.bound).to(args.device)
         optimizer = torch.optim.AdamW(student.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
         vf, vm = b.features_for(args, name, model, transform, val, smoothing, initial_hash)
-        reference = b.validate(teacher, vf, vm, val, smoothing, args.device)
-        start, stale, history, best, anchor = 0, 0, [], reference['mean_ber'], reference['mean_ber']
+        start, stale, history, first_pair = 0, 0, [], None
         if (run/'last.pt').exists():
             saved = torch.load(run/'last.pt', map_location='cpu', weights_only=True)
             if saved['identity'] != identity:
                 raise ValueError('C resume identity mismatch')
             student.load_state_dict(saved['correction_state_dict'], strict=True)
             optimizer.load_state_dict(saved['optimizer'])
-            start, stale, history, best, anchor = [saved[k] for k in ['epoch', 'stale', 'history', 'best', 'anchor']]
+            start, stale, history, best, anchor, reference = [saved[k] for k in ['epoch', 'stale', 'history', 'best', 'anchor', 'reference']]
             print('Resume C after epoch:', start, flush=True)
             del saved
         else:
+            sampled = b.adaptation.balanced_source(pool, args.source_images, args.seed)
+            first_pair = b.features_for(args, name, model, transform, sampled, smoothing, initial_hash, epoch=0)
+            student.scale.fill_(max(1., float(first_pair[1][:, 0].abs().quantile(.75))))
+            reference = b.validate(student, vf, vm, val, smoothing, args.device)
+            best = anchor = reference['mean_ber']
             base.common.save(run/'best.pt', {'identity': identity, 'config': config,
                 'correction_state_dict': student.state_dict(), 'epoch': 0, 'best': best,
                 'reference': reference, 'validation': reference})
-            base.common.json_write(run/'b_start_source_validation.json', reference)
-        print(f'{name} C epoch0 = trained B epoch{start_meta["epoch"]}; source BER={reference["mean_ber"]:.2%}', flush=True)
+            base.common.json_write(run/'baseline_source_validation.json', reference)
+        print(f'{name} C starts independently from FF++ baseline; epoch0 BER={reference["mean_ber"]:.2%}', flush=True)
         for epoch in range(start, args.epochs):
             if stale >= args.patience:
                 break
             seed = args.seed+epoch*100003
             base.common.seed_all(seed)
             sampled = b.adaptation.balanced_source(pool, args.source_images, seed)
-            sf, sm = b.features_for(args, name, model, transform, sampled, smoothing, initial_hash, epoch)
+            sf, sm = first_pair if epoch == 0 and first_pair is not None else b.features_for(
+                args, name, model, transform, sampled, smoothing, initial_hash, epoch)
+            first_pair = None
             target_views = TargetPairs(sampled, target, args, transform, epoch, smoothing)
             plan = target_views.metadata()
             pd.DataFrame(plan).to_csv(run/f'target_exposures_epoch{epoch+1:02d}.csv', index=False)
@@ -223,13 +184,15 @@ def train(args):
             print(f'Target exposures real={counts[0]}, fake={counts[1]} | {dict(Counter(r["condition"] for r in plan))}', flush=True)
             tf, tm = target_features(args, name, model, target_views, initial_hash, epoch)
             labels = torch.tensor(sampled.class_index.astype(int).to_numpy(), dtype=torch.long)
-            loader = base.common.make_loader(TensorDataset(sf, sm, labels, tf, tm), args, False, seed)
+            order = source_order(args, len(sampled), seed)
+            pd.DataFrame({'source_row_index': order.numpy()}).to_csv(run/f'source_order_epoch{epoch+1:02d}.csv', index=False)
+            loader = base.common.make_loader(TensorDataset(sf[order], sm[order], labels[order], tf, tm), args, False, seed)
             student.train()
-            totals, count = np.zeros(6), 0
+            totals, count = np.zeros(5), 0
             for values in tqdm(loader, desc=f'{name} C correction {epoch+1}/{args.epochs}', mininterval=10):
                 values = [v.to(args.device) for v in values]
                 optimizer.zero_grad(set_to_none=True)
-                losses = loss_for(student, teacher, *values, args)
+                losses = loss_for(student, *values, args)
                 if not torch.isfinite(losses[0]):
                     raise RuntimeError('Nonfinite C loss; last completed epoch preserved')
                 losses[0].backward()
@@ -248,7 +211,7 @@ def train(args):
                 stale += 1
             history.append({'epoch': epoch+1, 'loss': float(totals[0]/count),
                 **{k: float(totals[i]/count) for i, k in enumerate(
-                    ['classification_loss', 'restoration_loss', 'clean_anchor_loss', 'target_consistency_loss', 'target_trust_loss'], 1)},
+                    ['classification_loss', 'restoration_loss', 'clean_anchor_loss', 'target_consistency_loss'], 1)},
                 'eligible': allowed, 'validation': validation, 'target_real_exposures': counts[0], 'target_fake_exposures': counts[1],
                 'source_paths_sha256': evaluation.key(sampled.crop_path.tolist()), 'target_plan_sha256': evaluation.key(plan)})
             saved = {'identity': identity, 'config': config, 'correction_state_dict': student.state_dict(),
@@ -263,8 +226,9 @@ def train(args):
             del sf, sm, tf, tm, loader, target_views
         best_state = torch.load(run/'best.pt', map_location='cpu', weights_only=True)
         base.common.json_write(run/'completed.json', {'identity': identity, 'epochs_completed': len(history),
-            'selected_epoch': best_state['epoch'], 'selected_source_mean_ber': best, 'b_start': start_meta})
-        del model, student, teacher, optimizer, vf, vm, best_state
+            'selected_epoch': best_state['epoch'], 'selected_source_mean_ber': best,
+            'initialization': 'original FF++ baseline; independent of B'})
+        del model, student, optimizer, vf, vm, best_state
         if args.device == 'cuda':
             torch.cuda.empty_cache()
 
@@ -279,22 +243,31 @@ def evaluate(args):
         raise ValueError('C and baseline test protocol differ')
     records = []
     for name in args.models:
-        bs, meta = b_start(args, name)
         run = args.runs_root/run_name(name, args.seed)
         config = json.loads((run/'config.json').read_text())
         saved = torch.load(run/'best.pt', map_location='cpu', weights_only=True)
         done = json.loads((run/'completed.json').read_text())
         if (saved['config'] != config or saved['identity'] != evaluation.key(config) or done['identity'] != saved['identity']
                 or config['model'] != name or config['seed'] != args.seed or config['protocol'] != PROTOCOL
-                or config['b_start'] != meta or config['smoothing'] != cfg
+                or config['smoothing'] != cfg or not config['target_training']
+                or config['b_code_sha256'] != base.common.digest(Path(b.__file__))
                 or config['code_sha256'] != base.common.digest(Path(__file__))):
             raise ValueError('C evaluation/checkpoint mismatch')
         initial, initial_hash = evaluation.checkpoint(argparse.Namespace(runs_root=args.baseline_runs_root, seed=args.seed), name)
         if initial_hash != config['initial_checkpoint_sha256']:
             raise ValueError('C initial baseline differs')
-        identity = evaluation.key({'checkpoint': base.common.digest(run/'best.pt'), 'b_start': meta['checkpoint_sha256'],
+        states = {STRATEGY: saved}
+        # Preserve selected epoch0, but show the actually trained last model too.
+        if saved['epoch'] == 0:
+            last = torch.load(run/'last.pt', map_location='cpu', weights_only=True)
+            if last['identity'] != saved['identity'] or last['config'] != config:
+                raise ValueError('C last checkpoint mismatch')
+            if last['epoch'] > 0:
+                states[f'c_last_epoch{last["epoch"]}_diagnostic'] = last
+        hashes = {s: base.common.digest(run/('best.pt' if s == STRATEGY else 'last.pt')) for s in states}
+        identity = evaluation.key({'checkpoints': hashes,
                                    'test': provenance, 'code': config['code_sha256'], 'precision': 'FP32', 'torch': str(torch.__version__)})
-        model, transform, student, teacher = None, None, None, None
+        model, transform, correctors = None, None, {}
         for condition in cfg['conditions']:
             original = json.loads((args.baseline_evaluation_root/f'{name}_{condition}.json').read_text())
             if (original['checkpoint_sha256'] != initial_hash or original['manifest_sha256'] != provenance['manifest_sha256']
@@ -303,7 +276,7 @@ def evaluate(args):
             records.append({'model': name, 'strategy': 'baseline', 'condition': condition,
                 **{k: original[k] for k in b.METRICS if k != 'balanced_error_rate'},
                 'balanced_error_rate': .5*(original['real_fpr']+original['fake_fnr'])})
-            paths = {s: args.output_root/f'{name}_{s}_{condition}.json' for s in ['b_start', STRATEGY]}
+            paths = {s: args.output_root/f'{name}_{s}_{condition}.json' for s in states}
             ready = all(p.is_file() and p.with_suffix('.csv').is_file() for p in paths.values())
             reports = {s: json.loads(p.read_text()) for s, p in paths.items()} if ready else {}
             if ready and any(r['identity'] != identity for r in reports.values()):
@@ -316,18 +289,18 @@ def evaluate(args):
             if not ready:
                 if model is None:
                     model, transform = b.frozen_model(args, name, initial)
-                    student = b.Correction(b.adaptation.FEATURES[name], meta['b_config']['head']['hidden']).to(args.device)
-                    student.load_state_dict(saved['correction_state_dict'], strict=True); student.eval()
-                    teacher = copy.deepcopy(student)
-                    teacher.load_state_dict(bs['correction_state_dict'], strict=True); teacher.eval()
+                    for s, state in states.items():
+                        corrector = b.Correction(b.adaptation.FEATURES[name], config['head']['hidden']).to(args.device)
+                        corrector.load_state_dict(state['correction_state_dict'], strict=True)
+                        correctors[s] = corrector.eval()
                 loader = DataLoader(evaluation.Views(frame, ea, transform, condition), batch_size=args.batch_size,
                                     num_workers=args.workers, shuffle=False, pin_memory=args.device == 'cuda')
                 scores = {s: np.empty(len(frame)) for s in paths}
                 with torch.no_grad():
-                    for images, indexes in tqdm(loader, desc=f'{name} B-start vs C / {condition}', mininterval=10):
+                    for images, indexes in tqdm(loader, desc=f'{name} independent C / {condition}', mininterval=10):
                         logits, features = b.adaptation.outputs(name, model, images.to(args.device))
                         margin = logits[:, 1]-logits[:, 0]
-                        for s, corrector in [('b_start', teacher), (STRATEGY, student)]:
+                        for s, corrector in correctors.items():
                             corrected = corrector(features.float(), margin.float())
                             result = logits.float().clone(); result[:, 1] += corrected-margin
                             scores[s][indexes.numpy()] = result.softmax(1)[:, 1].cpu().numpy()
@@ -341,9 +314,10 @@ def evaluate(args):
                     values = base.binary_metrics(frame.class_index.astype(int).to_numpy(), scores[s])
                     values.update(identity=identity, model=name, strategy=s, condition=condition, images=len(frame),
                         threshold=.5, precision='FP32', unit='frame', manifest_sha256=provenance['manifest_sha256'],
-                        checkpoint_sha256=base.common.digest(run/'best.pt'), b_start_sha256=meta['checkpoint_sha256'],
+                        checkpoint_sha256=hashes[s],
                         initial_checkpoint_sha256=initial_hash,
-                        b_start_epoch=meta['epoch'], b_start_file=meta['checkpoint_file'], c_selected_epoch=saved['epoch'],
+                        evaluated_epoch=states[s]['epoch'], c_selected_epoch=saved['epoch'],
+                        evaluation_role='selected_model' if s == STRATEGY else 'last_epoch_diagnostic',
                         balanced_error_rate=.5*(values['real_fpr']+values['fake_fnr']))
                     base.common.json_write(path, values); reports[s] = values
             else:
@@ -351,7 +325,7 @@ def evaluate(args):
             for s, values in reports.items():
                 records.append({'model': name, 'strategy': s, 'condition': condition, **{k: values[k] for k in b.METRICS}})
                 print(f'{name} {s} {condition}: FPR={values["real_fpr"]:.2%} FNR={values["fake_fnr"]:.2%} BER={values["balanced_error_rate"]:.2%} AUC={values["auc"]:.4f}', flush=True)
-        del model, student, teacher, initial, bs, saved
+        del model, correctors, initial, states, saved
         if args.device == 'cuda':
             torch.cuda.empty_cache()
     if args.reference_evaluations is not None and args.reference_evaluations.is_dir():
@@ -369,6 +343,26 @@ def evaluate(args):
                         **{k: old[k] for k in b.METRICS if k != 'balanced_error_rate'},
                         'balanced_error_rate': .5*(old['real_fpr']+old['fake_fnr'])})
                 break
+    b_references = []
+    if args.b_evaluation_root is not None and args.b_evaluation_root.is_dir():
+        for name in args.models:
+            for path in sorted(args.b_evaluation_root.rglob(f'{name}_preservation_b_normal.json')):
+                if any(p.startswith('diagnostic_epoch') for p in path.parts):
+                    continue
+                previous = path.parent/'evaluation_protocol.json'
+                if not previous.is_file() or any(json.loads(previous.read_text()).get(k) != v for k, v in provenance.items()):
+                    continue
+                paths = [path.parent/f'{name}_preservation_b_{c}.json' for c in cfg['conditions']]
+                if not all(p.is_file() for p in paths):
+                    continue
+                for condition, path in zip(cfg['conditions'], paths):
+                    row = json.loads(path.read_text())
+                    records.append({'model': name, 'strategy': 'preservation_b', 'condition': condition,
+                                    **{k: row[k] for k in b.METRICS}})
+                    b_references.append({'model': name, 'condition': condition, 'file': str(path),
+                                         'selected_epoch': row['selected_epoch']})
+                break
+    base.common.json_write(args.output_root/'b_reference_provenance.json', b_references)
     table = pd.DataFrame(records)
     table.to_csv(args.output_root/'comparison.csv', index=False)
     table.groupby(['model', 'strategy'])[b.METRICS].mean().reset_index().to_csv(args.output_root/'condition_means.csv', index=False)
@@ -378,13 +372,12 @@ def evaluate(args):
 def main():
     p = b.parser()
     p.description = __doc__
-    p.add_argument('--b-runs-root', type=Path, required=True)
+    p.add_argument('--b-evaluation-root', type=Path)
     p.add_argument('--uda-manifest-dir', type=Path, required=True)
     p.add_argument('--target-images', type=int, default=5000)
     p.add_argument('--target-weight', type=float, default=.1)
-    p.add_argument('--trust-weight', type=float, default=1.)
     p.add_argument('--extra-strength', type=float, default=.25)
-    p.set_defaults(learning_rate=1e-4)
+    p.set_defaults(learning_rate=1e-3)
     args = p.parse_args()
     if args.device == 'cuda' and not torch.cuda.is_available():
         raise RuntimeError('GPU runtime required')

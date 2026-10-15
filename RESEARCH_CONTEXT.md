@@ -302,3 +302,15 @@ source6,000+target6,000회, 각2view로24,000views/epoch. 추가계산량은B보
 C-vs-B차이에는추가source학습효과도포함되며타깃항목의독립기여로단정하지않는다. 새TAR없음/Gitpush없음/Drive변경없음.
 tinyCPU로best/last분기,3모델학습/완료skip,정확한재개,5:5샘플링,스무딩중첩,손실계산,teacher고정,평가재사용,B파일보존,7셀구문검사통과.
 전체GPU C학습은아직실행하지않았다.
+
+## C 독립 초기화로 변경 — 사용자 요청 (2026-10-15)
+위 순차 C v1 설계는 새 실험에서 사용하지 않는다. C는 B가 아니라 원래 FF++ Baseline에서 독립적으로 시작한다.
+프로토콜/새 출력 경로: ffpp_c23_smoothing_consistency_c_independent_v2. 기존 B와 v1 결과는 보존한다.
+새 zero-output 보정 모듈, scale/bound 초기화, LR1e-3, source 이미지·배치 순서, 최대10epoch/patience3과 FF++ 검증 규칙을 B와 맞춘다.
+손실은 B의 source 손실 +0.1 target pair normalized Huber. B teacher와 target 점수 유지 항목은 제거했다.
+기존 CDF 5,000장과 GT 보조 5:5 노출 샘플링/observed+추가약한스무딩 두 view는 유지한다. 타깃 정답은 분류 손실에 쓰지 않는다.
+검증 guard는 원래 Baseline 대비 적용. 선택 epoch0은 Baseline이며 이 경우 last.pt를 별도 진단으로 자동 평가하고 best를 대체하지 않는다.
+B 비교는 저장된 검증 선택 평가만 읽는다. CLIP B epoch3 진단을 정식 best로 대체하지 않는다.
+source 최대 예산은 같지만 실제 조기종료 시점은 다를 수 있고 target feature 추출 추가 계산량은 존재한다.
+CPU tiny-model 검사: 3모델 학습/완료 skip/정확한 중단 재개, source 배치 순서, target 5:5 및 손실, 평가 재사용, Baseline 보존, 코랩7셀 구문 검사를 통과했다.
+전체 GPU 독립 C 실험은 실행하지 않았다. Git push 및 Drive 변경 없음.
