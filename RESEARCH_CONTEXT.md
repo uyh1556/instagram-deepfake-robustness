@@ -331,3 +331,20 @@ FF++ 검증 1,200장×4조건 평균 BER만으로 best와 조기종료를 결정
 Baseline/B/공유 데이터와 신규 ber_only_v3 출력 경로는 삭제하지 않았다. Colab 런타임의 실행 프로세스·로컬 캐시는 원격으로 정리하지 않았다.
 BER-only MD/코랩 내용을 기존 train_test_ffpp_c23_consistency_c_seed42 이름으로 통합하고 별도 _ber_only_seed42 파일은 제거했다.
 현재 기존 C 이름의 코랩이 세 모델 전체 --selection-policy ber_only를 사용하며 출력은 ber_only_v3로 분리한다. Git push는 하지 않았다.
+
+## 스무딩 반응 분류 학습 — CLIP 먼저 실행 (2026-10-16)
+사용자 요청으로 ffpp_c23_smoothing_response.py와 train_test_ffpp_c23_clip_smoothing_response_seed42 MD/코랩을 추가했다.
+CLIP은 실행 순서상 먼저이며, 스크립트는 Xception/DINOv2에도 같은 설계를 지원한다. 새 실험 명칭에는 pilot을 사용하지 않는다.
+Current-only와 Response 모두 FF++ baseline encoder·기존 classifier를 완전히 고정하고 hidden32 GELU MLP만 학습한다.
+MLP 입력은 LN(current features), feature delta/global training RMS, current margin/scale, margin delta/scale이며 scale은 첫 학습 표본에서만 계산한다.
+현재 margin+MLP residual로 판정한다. 마지막 층0초기화, 기존 clean margin 복원/teacher/consistency 손실 없이 실제 source 정답 BCE만 사용한다.
+Current-only는 delta 입력을0으로 가려 같은 구조·초기화·parameter 수·학습 목록·순서로 비교한다. 유효 입력 자유도는 다를 수 있다.
+기존 source6,000/epoch·validation1,200과 source-aware 분할을 재사용한다. clean+random25/50/75% observed 두 view 각각에 약한25% probe를 추가한다.
+Native ROI·기존모델별 전처리·fallback 유지. 대응 flip 동일, FP32 eval-mode 본체, source rotation seed42+epoch*100003.
+특징 추출은 두 조건이 공유하며 epoch당12,000 observed+12,000 probe forward. 배포 Current-only1회/Response2회 forward이므로 동일 계산량 주장은 하지 않는다.
+CDF training/target 비테스트 TAR 불필요. CDF 공식test8,288장×원본/약/중/강 평가에서 입력이미지와 그 입력의 추가 probe만 사용한다.
+최대10epoch/patience3/AdamW LR1e-3/batch16, 4조건 source validation 평균BER만으로 best선택, epoch0후보/추가guard없음.
+epoch0선택시 last는 별도 진단으로 표시하고 best는 유지. 분류기와 local feature cache 재사용 및 완료epoch 재개 지원.
+새 출력 roots는 ffpp_c23_smoothing_response_v1. Baseline은 필요한 frozen forward에서 함께 측정하고 기존 Aug는 호환되는 저장 결과만 참고한다.
+CPU 작은 fixture에서 실제 train/evaluate·재개 가중치 일치·완료skip·평가재사용·반응mask·fallback을 확인했고, 코랩7개 코드셀 구문을 확인했다.
+실제 CLIP GPU 학습 및 성능 평가는 아직 실행하지 않았다. 기존 데이터·모델·결과 변경, Git push, Drive 변경은 수행하지 않았다.
