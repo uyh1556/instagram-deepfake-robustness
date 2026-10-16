@@ -403,3 +403,21 @@ best0이면last를별도진단으로평가한다. 새runs/manifests/evaluations 
 CPU5검사통과:최악view선택과gradient방향/두클래스배치/과거Current-only출력동일/캐시pixel exact/fallback유지/rawAUC포화처리,
 세모델tiny학습·평가·완료skip/조건혼합AUC검증/전략중간중단후가중치·history완전동일재개/코랩7셀IPython문법.
 전체GPU학습이나개선효과는미확인. Gitpush/Drive쓰기/새TAR생성/예약자동화없음.
+
+## CLIP 우선 Teacher–Student UDA 비교 구현 (2026-10-16)
+사용자 승인으로 scripts/ffpp_c23_smoothing_mean_teacher.py와 train_test_ffpp_c23_smoothing_mean_teacher_seed42 MD/7셀 코랩을 추가했다.
+기본 CLIP B/16; Xception/DINO도 기존모델 학습범위를 재사용한다. baseline부터 독립시작하는 augmentation/mean_teacher/mean_teacher_smoothing 3조건이다.
+앞선 점수 보정기/순위 손실/도메인 판별기는 사용하지 않는다. 원래 classifier와 baseline에서 정한 인코더 일부를 fine-tuning한다.
+source6000/epoch·원본+무작위 스무딩·공통 seed/배치순서·FF++ val1200×4조건 평균BER 최소 선택을 맞춘다. epoch0 후보, AUC guard 없음.
+선택·배포 모델은 학생이다. EMA 교사(decay0.999, FP32 eval, gradient 없음)는 임시정답만 제공하며 frozen 파라미터는 그대로 복사한다.
+target CE는 confidence>=0.9인 hard pseudo-label만 전체 타깃 배치로 나누고 최대weight0.5를2epoch 선형ramp한다. 신뢰도는 정확성 보장이 아니다.
+기존 dataset_inputs의 비테스트5000장과 test video/보수적filename parent제외를 재사용한다. 타깃 정답은 표본선택 전에 제거하며5:5 GT샘플러를 쓰지 않는다.
+epoch6000회 영상균등 복원노출, 원본/약/중/강 각25% 관측. 교사 현재관측/학생 반대좌우반전; smoothing조건만 학생에 추가약한스무딩을 재적용한다.
+깨끗한CDF대응원본이나 강도정보를 모델에 주지 않는다. 원본이미지/기존분할·preprocessing·fallback은 유지한다.
+실제/가짜 teacher예측수와 임시정답 채택수/채택률/confidence/target노출계획을 저장한다. 구GT5:5 DANN과의 차이는 방법효과와 샘플링효과가 함께 달라지는 참고비교다.
+최대10/patience3/min_delta0.0001, AdamW LR1e-5/weightdecay1e-4, gradientnorm1, BN통계고정, student BF16지원시BF16/아니면FP32.
+source/target native bilateral PNG캐시 및 source validation변형캐시를 사용한다. backbone은학습하므로 frozen feature캐시는 사용하지 않는다.
+CDF 공식test8288×4 FP32 frame FPR/FNR/BER/rawmargin AUC와 확률AUC/혼합AUC/4×4교차AUC를 저장한다. 기존 Ranking baseline raw예측이 호환되면 재사용한다.
+best epoch0이면 같은baseline예측을 재사용한다. 테스트를 보고 last를best로 대체하지 않는다. 완료skip/마지막완료epoch 학생·교사·optimizer 재개 지원.
+CPU4검사로 타깃label독립샘플링/임시정답마스킹/EMA/기존스무딩pixel동일/세조건학습·평가·완료skip/정확재개/기존baseline보존/7코랩셀문법을 확인했다.
+실제 random-initialized CLIP B/16 구조의 forward/backward/EMA/학습범위도 검사했다. GPU 정식학습·성능개선은 미확인이다. Gitpush/Drive쓰기/새TAR/예약없음.
