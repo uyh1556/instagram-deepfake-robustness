@@ -358,3 +358,19 @@ summarize_smoothing_response.py를 추가하여 저장된 JSON/CSV만 읽고 비
 코랩 Cell6은 evaluate에서 --reference-evaluations를 제외하고 별도 집계 명령을 이어 실행하도록 수정했다. 이미4조건 평가를 마친 실행은 집계 명령만 실행한다.
 CPU regression에서 images/precision 없는 실제 과거 형식의 Aug 병합·추론 호출 없음·기존 예측 보존을 확인했고,7개 코랩 코드셀 구문을 확인했다.
 사용자 Colab 런타임/Drive 결과를 직접 수정하거나 GPU 재평가하지 않았다. Git push는 하지 않았다.
+
+## Source-only 클래스별 스무딩 점수 의존 억제 구현 (2026-10-16)
+사용자 승인으로 ffpp_c23_smoothing_pivot.py 및 train_test_ffpp_c23_smoothing_pivot_seed42 MD/코랩을 추가했다.
+CLIP부터 실행하며 MODELS로Xception/DINOv2도지원한다. 기존 FF++ baseline부터각각독립시작하는 새 Aug와 conditional_pivot을 비교한다.
+FF++ source6000/epoch, Real3000/Fake각750, 동일 seed별영상균형목록·배치·원본+랜덤약중강view·대응flip을 유지한다.
+Xception전체/CLIP·DINO기존마지막2블록 등과분류기학습, BN통계고정, encoder/headLR각1e-5.
+후보만 training-only 진짜/가짜별2개 Linear1→32GELU→4 보조판별기로 margin/10의스무딩강도를예측한다.
+탐지기에는gradient reversal을적용해진위CE를유지하면서클래스내강도의존을줄인다. reversal최대0.1/2epoch선형증가, criticLR1e-3.
+원본/약/중/강노출prior1/2·1/6·1/6·1/6을고정손실가중치0.5/1.5/1.5/1.5로보정한다. fallback은진위CE유지/강도손실제외.
+두방법모두기존FF++val1200장×4조건FP32평균BER최소/threshold0.5로best선택, epoch0후보/guard없음/최대10/patience3.
+검증native스무딩PNG만1회캐시, backbone특징은학습되므로매epoch다시추론한다. CDF는학습/선택에서읽지않는다.
+CDF공식test8288장×4조건평가및기존Baseline참조포함. FP32frame FPR/FNR/BER/AUC와rawmargin저장. 테스트에는강도/정답/보조판별기불필요.
+실제GPU학습은아직없다. 클래스별pivotal학습원리의적용실험이며독창성/성능확보를주장하지않는다. 기존데이터/결과/모델보존, Gitpush/Drive변경없음.
+CPU4개검사통과: critic의class별gradient reversal부호/보조판별기gradient유지/fallback제외, 세모델경로의tiny실제학습과baseline보존,
+정확한완료epoch중단재개, 기존Baseline참조와새평가재사용, 혼합AUC=16교차AUC평균/혼합BER=4조건평균을확인했다.
+코랩7개코드셀을IPython변환후구문검사했다. 조건별평균·혼합AUC는mixture_summary.csv,4×4교차표는cross_condition_auc.csv에저장한다.
