@@ -384,3 +384,22 @@ last.pt의optimizer·모델·보조판별기·epoch·best·stale·history를복�
 --train-cache 기본/content/smoothing_pivot_bilateral_cache_v1; 처음본이미지만계산, 로컬여유2GiB미만이면새캐시저장없이계산을계속한다. 기존원본/가중치/결과삭제없음.
 CPU5검사통과: 여러native크기·4강도pixel exact, 캐시hit시bilateral호출없음, paired입력/flip/fallback동일, 이전SHA체크포인트의config보존및재개후가중치/기록일치, 학습설정변경거부, 기존학습/평가재사용및7코랩셀구문검사.
 실제ColabGPU속도개선량은미측정이며첫캐시생성비용은남는다. Gitpush/Drive변경/사용자Colab프로세스중단은수행하지않았다.
+
+## 백본 고정 품질 간 진짜–가짜 순위 학습 (2026-10-16)
+최근 Drive 확인에서 Pivot은 Aug를 안정적으로 능가하지 못했다. Xception best4는이미margin이커졌으며후속epoch가발산했다.
+Xception은확률포화때문에AUC0.6239로보고됐지만rawmargin평균AUC는0.6543(Aug0.6477);BER는40.36%(Aug38.92%)로악화했다.
+CLIP은발산없이도Pivot BER29.92%/AUC0.7599로Aug29.66%/0.7807보다낮았다. 안정성수정만으로성공할근거로해석하지않는다.
+사용자승인으로scripts/ffpp_c23_smoothing_ranking.py와train_test_ffpp_c23_smoothing_ranking_seed42 MD/코랩을추가했다.
+연구이유: 클래스내강도분포를억제하기보다품질이다른진짜/가짜의구분을직접학습하고,기존특징을보존하는설정에서효과를분리한다.
+기존FF++baseline의encoder/classifier완전고정. 이전Current-only와같은hidden32 residual MLP를BCE/current_only와BCE+quality_ranking에서동일초기화한다.
+새matched BCE조건도학습한다. source6000/epoch/기존영상균형회전표본/paired flip/원본+랜덤3강도는유지한다.
+배치는source16쌍(진짜8/가짜8),32observed views. 이전Response의observed16배치와달라과거Current-only를동일대조군으로대체하지않는다.
+후보는BCE+0.5mean softplus(1+max(real의두view margin)/scale-min(fake의두view margin)/scale).
+scale=max(1,첫epoch관측margin절댓값q75)고정. 배치내모든진짜–가짜조합을비교하며네강도전체의최악값을보장하지않는다.
+원본점수복원/teacher/target/GRL없음. LR1e-3/AdamWwd1e-4/10epoch/patience3,동일FF++val1200×4평균BER최소/epoch0후보/guard없음.
+특징추출FP32/기본32장배치,매epoch12000forward를두조건공유. 기존픽셀동일native bilateral cache재사용;CDF기존스무딩PNG캐시도프로토콜일치시사용한다.
+CDF공식test8288×4에서frame FPR/FNR/BER,rawmargin주AUC와확률AUC,조건혼합AUC/4×4교차AUC를저장한다. Baseline은동일forward에서획득한다.
+best0이면last를별도진단으로평가한다. 새runs/manifests/evaluations root=ffpp_c23_smoothing_ranking_v1;원본데이터/과거코드·결과보존.
+CPU5검사통과:최악view선택과gradient방향/두클래스배치/과거Current-only출력동일/캐시pixel exact/fallback유지/rawAUC포화처리,
+세모델tiny학습·평가·완료skip/조건혼합AUC검증/전략중간중단후가중치·history완전동일재개/코랩7셀IPython문법.
+전체GPU학습이나개선효과는미확인. Gitpush/Drive쓰기/새TAR생성/예약자동화없음.
