@@ -421,3 +421,19 @@ CDF 공식test8288×4 FP32 frame FPR/FNR/BER/rawmargin AUC와 확률AUC/혼합AU
 best epoch0이면 같은baseline예측을 재사용한다. 테스트를 보고 last를best로 대체하지 않는다. 완료skip/마지막완료epoch 학생·교사·optimizer 재개 지원.
 CPU4검사로 타깃label독립샘플링/임시정답마스킹/EMA/기존스무딩pixel동일/세조건학습·평가·완료skip/정확재개/기존baseline보존/7코랩셀문법을 확인했다.
 실제 random-initialized CLIP B/16 구조의 forward/backward/EMA/학습범위도 검사했다. GPU 정식학습·성능개선은 미확인이다. Gitpush/Drive쓰기/새TAR/예약없음.
+
+## Teacher–Student UDA 완료 결과와 Soft 정답 비교 구현 (2026-10-17)
+앞 문단의 GPU 미확인은 코드 작성 시점의 기록이다. 이후 Drive에서 CLIP/Xception의 Aug·일반 Mean Teacher·추가 스무딩 Mean Teacher 총6개 완료 run을 확인했다.
+4조건 평균 BER/AUC: Xception baseline38.56%/0.6731, matched Aug38.92%/0.6477, 일반UDA33.76%/0.7060.
+CLIP baseline32.07%/0.7997, matched Aug29.66%/0.7807, 일반UDA31.06%/0.8015. 단일seed 개발 평가이며 보편적인 개선으로 주장하지 않는다.
+사용자가 soft 정답 및 CDF weight0.5·0.25 두 조건 구현을 승인했다. scripts/ffpp_c23_smoothing_mean_teacher_soft.py와 동명 train_test_*_seed42 MD/7셀 코랩을 추가했다.
+기존 hard Mean Teacher 엔진 파일을 변경하지 않고 학습/EMA/학생 선택/평가/캐시/재개 함수를 재사용한다. 새 protocol은 ffpp_c23_smoothing_mean_teacher_soft_v1이다.
+두 soft 조건은 FF++ baseline에서 각각 독립시작한다. 교사 확신>=0.9 mask를 유지하고 T=1 교사 확률 그대로 soft CE를 계산하며 전체 target 배치 크기로 나눈다.
+CDF 최대 weight0.5 또는0.25만 바꾸고 기존2epoch ramp를 유지한다. source CE·FF++6000/epoch·CDF pool5000 및6000영상균등노출·원본/약/중/강25%·반대flip·EMA0.999·학습범위·split·native ROI·fallback은 기존 그대로다.
+CDF 실제 정답/GT5:5샘플링/추가약한스무딩은 사용하지 않는다. 기존 hard의 고정 validation/target CSV와 현재 목록·순서·데이터해시·예산을 비교한다.
+FF++ val1200×4 mean BER 최소·epoch0후보·guard없음·최대10/patience3를 유지한다. 선택·추론은 학생 best.pt이다.
+신규 checkpoint에는 재사용 엔진 해시와 soft 확장파일 해시를 구분해 저장한다. 기존 native pixel 캐시 identity 및 기존 hard checkpoint/code는 보존한다.
+기본 CLIP/Xception을 제공하며 MODELS를 하나만 남겨 모델별 코랩으로 나눌 수 있다. 새두조건만 학습/추론하고 이전 Baseline/Matched Aug/Hard UDA는 FP32 raw prediction·manifest·평가프로토콜이 맞는 저장 결과를 읽는다.
+comparison_with_hard.csv, condition_means_with_hard.csv, deltas_vs_hard.csv 및 기존 혼합/교차AUC·조건별원시예측을 저장한다. hard 결과 누락 시 새추론 전에 중단한다.
+CPU 작은fixture로 soft CE gradient/teacher detach/신뢰도mask/전체배치분모, hard와동일source·target계획, 두weight, 완료skip, 정확한학생·교사재개, 원본hard보존, 비0epoch학생추론·baseline재사용·비호환참조거부·코랩7셀구문을 검사했다.
+이 soft 조건의 전체GPU학습·성능은 아직 확인하지 않았다. 데이터/Drive 변경, 새TAR 생성, Gitpush, 자동예약은 수행하지 않았다.
