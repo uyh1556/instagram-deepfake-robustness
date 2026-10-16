@@ -127,9 +127,14 @@ else:
 
 ## Cell 6 — CDF 원본·스무딩 평가
 
+기존 Aug는 평가 추론을 완료한 뒤 별도 집계 명령으로 합친다. 과거 Aug JSON의 `images`·`precision` 필드가 없는 형식도 저장된 예측 CSV와 평가 프로토콜을 확인하여 읽는다. 이미 네 조건 평가를 마친 뒤 `KeyError: 'images'`로 중단했다면 **아래 두 번째 명령만 실행**하면 된다. 학습·평가 코드는 변경하지 않아 기존 체크포인트·특징 캐시·평가 결과의 identity를 유지한다.
+
 ```python
-!python -u "{PROJECT}/scripts/ffpp_c23_smoothing_response.py" evaluate {COMMON} --target-root "{TARGET_ROOT}" --output-root "{EVALUATION_ROOT}" --reference-evaluations "{REFERENCE_EVALUATIONS}" --batch-size 32 --hidden 32
+!python -u "{PROJECT}/scripts/ffpp_c23_smoothing_response.py" evaluate {COMMON} --target-root "{TARGET_ROOT}" --output-root "{EVALUATION_ROOT}" --batch-size 32 --hidden 32
 assert _exit_code==0,'평가 실패: 위 오류 확인 후 Cell 6 재실행'
+
+!python -u "{PROJECT}/scripts/summarize_smoothing_response.py" --models {MODEL_ARGS} --output-root "{EVALUATION_ROOT}" --reference-evaluations "{REFERENCE_EVALUATIONS}"
+assert _exit_code==0,'결과 집계 실패: 위 오류 확인'
 ```
 
 ## Cell 7 — 결과 표

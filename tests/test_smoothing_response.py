@@ -12,6 +12,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'scripts'))
 import ffpp_c23_smoothing_response as response
+import summarize_smoothing_response as summary
 import test_smoothing_preservation as fixture
 
 
@@ -71,6 +72,22 @@ class ResponseTests(unittest.TestCase):
         table = pd.read_csv(a.output_root/'comparison.csv')
         self.assertTrue({'baseline','current_only','response'}.issubset(set(table.strategy)))
         self.assertTrue(np.allclose(table.balanced_error_rate, (table.real_fpr+table.fake_fnr)/2))
+        # Match the actual legacy Aug producer: flat metrics without images/precision.
+        a.reference_evaluations.mkdir()
+        (a.reference_evaluations/'evaluation_protocol.json').write_bytes((a.output_root/'evaluation_protocol.json').read_bytes())
+        for condition in self.cfg['conditions']:
+            source = a.output_root/f'clip_b16_baseline_{condition}.json'
+            report = json.loads(source.read_text())
+            for field in ['images','precision','model','condition','strategy']:
+                report.pop(field, None)
+            dest = a.reference_evaluations/f'clip_b16_augmentation_{condition}.json'
+            dest.write_text(json.dumps(report))
+            dest.with_suffix('.csv').write_bytes(source.with_suffix('.csv').read_bytes())
+        with patch.object(response,'features_for',side_effect=AssertionError('must not infer')):
+            summary.summarize(a)
+        merged = pd.read_csv(a.output_root/'comparison.csv')
+        self.assertEqual(int(merged.strategy.eq('augmentation').sum()),4)
+        self.assertEqual(before, {p.name: p.stat().st_mtime_ns for p in paths if p.name in before})
         for path in a.output_root.glob('clip_b16_*_smooth_strong.csv'):
             frame = pd.read_csv(path)
             self.assertTrue(frame.probability_fake.between(0,1).all())

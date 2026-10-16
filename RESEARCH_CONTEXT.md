@@ -348,3 +348,13 @@ epoch0선택시 last는 별도 진단으로 표시하고 best는 유지. 분류�
 새 출력 roots는 ffpp_c23_smoothing_response_v1. Baseline은 필요한 frozen forward에서 함께 측정하고 기존 Aug는 호환되는 저장 결과만 참고한다.
 CPU 작은 fixture에서 실제 train/evaluate·재개 가중치 일치·완료skip·평가재사용·반응mask·fallback을 확인했고, 코랩7개 코드셀 구문을 확인했다.
 실제 CLIP GPU 학습 및 성능 평가는 아직 실행하지 않았다. 기존 데이터·모델·결과 변경, Git push, Drive 변경은 수행하지 않았다.
+
+## Response 평가 후 기존 Aug 집계 오류 수정 (2026-10-16)
+사용자 로그에서 CLIP Baseline/Current-only/Response의4조건 평가 완료 후 Aug 비교 단계 KeyError('images')를 확인했다.
+기존 ffpp_c23_smoothing_adaptation.py는 Aug JSON에 flat 지표·identity·checkpoint·unit·threshold만 저장하며 images/precision은 저장하지 않는다.
+학습/평가 스크립트의 SHA 0c963c634fc850d99bf8cc388683f44004b32ec0699d2d6b4b34d5a4f1aebe85를 그대로 유지하여 기존 체크포인트·특징캐시·평가 identity가 바뀌지 않게 했다.
+summarize_smoothing_response.py를 추가하여 저장된 JSON/CSV만 읽고 비교표를 완성한다. 과거 Aug의 누락 필드는 원본 파일에 추가하지 않으며,
+동일 evaluation protocol·test manifest·prediction CSV의 영상/이미지/라벨/행 수를 확인한다. Aug가 호환되지 않아도 primary 결과는 요약한다.
+코랩 Cell6은 evaluate에서 --reference-evaluations를 제외하고 별도 집계 명령을 이어 실행하도록 수정했다. 이미4조건 평가를 마친 실행은 집계 명령만 실행한다.
+CPU regression에서 images/precision 없는 실제 과거 형식의 Aug 병합·추론 호출 없음·기존 예측 보존을 확인했고,7개 코랩 코드셀 구문을 확인했다.
+사용자 Colab 런타임/Drive 결과를 직접 수정하거나 GPU 재평가하지 않았다. Git push는 하지 않았다.
