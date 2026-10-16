@@ -10,6 +10,7 @@ from unittest.mock import patch
 import numpy as np
 import pandas as pd
 import torch
+from PIL import Image
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 import ffpp_c23_smoothing_pivot as pivot
@@ -120,15 +121,24 @@ class PivotTests(unittest.TestCase):
         expected={s:copy.deepcopy(torch.load(a.runs_root/pivot.run_name('clip_b16',s,42)/'last.pt',weights_only=True)) for s in a.strategies}
         a.runs_root=self.root/'resume_runs'
         real_validate=pivot.validate
+        real_configuration=pivot.configuration
         calls=0
         def interrupted(*args):
             nonlocal calls
             calls+=1
             if calls==3:raise InterruptedError('after epoch1 checkpoint')
             return real_validate(*args)
-        with patch.object(pivot,'validate',side_effect=interrupted):
+        def legacy_configuration(*args):
+            return dict(real_configuration(*args),code_sha256=pivot.LEGACY_TRAINER_SHA256)
+        with patch.object(pivot,'validate',side_effect=interrupted), patch.object(pivot,'configuration',side_effect=legacy_configuration):
             with self.assertRaises(InterruptedError):pivot.train(a)
+        aug_run=a.runs_root/pivot.run_name('clip_b16','augmentation',42)
+        original_config=(aug_run/'config.json').read_bytes()
+        a.train_cache=self.root/'native_bilateral_cache'
         pivot.train(a)
+        self.assertEqual((aug_run/'config.json').read_bytes(),original_config)
+        proposed=dict(expected['augmentation']['config'],encoder_lr=.123)
+        with self.assertRaises(ValueError):pivot.compatible_config(aug_run,proposed)
         for strategy in a.strategies:
             actual=torch.load(a.runs_root/pivot.run_name('clip_b16',strategy,42)/'last.pt',weights_only=True)
             self.assertEqual(expected[strategy]['history'],actual['history'])
@@ -136,6 +146,35 @@ class PivotTests(unittest.TestCase):
                 self.assertTrue(torch.equal(value,actual['model_state_dict'][key]))
             for key,value in expected[strategy]['critic_state_dict'].items():
                 self.assertTrue(torch.equal(value,actual['critic_state_dict'][key]))
+
+    def test_cached_pixels_equal_original_and_skip_bilateral_on_hits(self):
+        import smoothing_pixel_cache as cached
+        settings=self.cfg['bilateral']
+        identity={'test':'lossless native bilateral','settings':settings}
+        cache=cached.BilateralCache(self.root/'pixel_checks',settings,identity)
+        rng=np.random.default_rng(43)
+        for i,(height,width) in enumerate([(24,24),(93,127),(197,256)]):
+            array=rng.integers(0,256,(height,width,3),dtype=np.uint8)
+            image=Image.fromarray(array)
+            path=f'frames/video{i}/000001.png'
+            for strength in [0.,.25,.5,.75]:
+                expected=pivot.adaptation.smooth(image,strength,settings)
+                actual=cache.smooth(image,path,strength)
+                self.assertTrue(np.array_equal(np.asarray(expected),np.asarray(actual)))
+            with patch.object(cached,'bilateral',side_effect=AssertionError('must reuse native pixels')):
+                actual=cache.smooth(image,path,.5)
+                self.assertTrue(np.array_equal(np.asarray(actual),np.asarray(pivot.adaptation.smooth(image,.5,settings))))
+        pool,_,data=pivot.shared.source_inputs(self.args)
+        self.args.train_cache=self.root/'native_views'
+        pivot.prepare_pixel_cache(self.args,self.cfg,data)
+        cached_dataset=pivot.PairedSource(pool,self.args,fixture.build()[1],self.cfg,epoch=1)
+        uncached_args=copy.copy(self.args);uncached_args._pixel_cache=None
+        uncached_dataset=pivot.PairedSource(pool,uncached_args,fixture.build()[1],self.cfg,epoch=1)
+        for index in range(len(pool)):
+            expected,actual=uncached_dataset[index],cached_dataset[index]
+            self.assertTrue(torch.equal(expected[0],actual[0]))
+            self.assertTrue(torch.equal(expected[1],actual[1]))
+            self.assertEqual(expected[2:],actual[2:])
 
 
     def test_notebook_code_cells_and_direct_training(self):

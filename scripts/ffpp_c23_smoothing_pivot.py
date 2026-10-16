@@ -20,11 +20,45 @@ import ffpp_c23_smoothing_adaptation as adaptation
 import ffpp_c23_smoothing_preservation as shared
 import evaluate_ffpp_baselines_celebdf_smoothing as evaluation
 import train_ffpp_c23_baseline as base
+import smoothing_pixel_cache as pixel_cache
 
 ROOT = Path(__file__).resolve().parents[1]
 PROTOCOL = 'ffpp_c23_smoothing_pivot_v1'
 STRATEGIES = ['augmentation', 'conditional_pivot']
 CONDITIONS = ['normal', 'smooth_weak', 'smooth_medium', 'smooth_strong']
+# Exact previous released trainer. Only the pixel-identical cache optimization is compatible.
+LEGACY_TRAINER_SHA256 = 'b6ca3918f14ec866ff4746a993082c84b81ce110b0eca089a162322b3b562125'
+LEGACY_SMOOTHING_SHA256 = 'eb32c7e7f5e116ecf269732a2d83b64f3a86b30bcc6f60a643c64f7cce443e70'
+
+
+def compatible_config(run, proposed):
+    path=run/'config.json'
+    if not path.is_file():
+        return proposed
+    saved=json.loads(path.read_text())
+    if saved==proposed:
+        return saved
+    normalized=dict(saved,code_sha256=proposed['code_sha256'])
+    if saved.get('code_sha256')==LEGACY_TRAINER_SHA256 and normalized==proposed:
+        print('Compatible speed optimization: preserving original config/checkpoint identity',flush=True)
+        return saved
+    raise ValueError(f'Run settings differ: {run}; only the verified cache-only trainer change is compatible')
+
+
+def prepare_pixel_cache(args, cfg, data):
+    args._pixel_cache=None
+    root=getattr(args,'train_cache',None)
+    if root is None:
+        return
+    digest=base.common.digest(ROOT/'scripts/smoothing_roi_pilot.py')
+    if digest!=LEGACY_SMOOTHING_SHA256:
+        raise ValueError('Smoothing implementation changed; pixel-equivalent optimization must be reverified')
+    identity={'source_trainval_sha256':data['source_trainval_sha256'],
+        'bilateral':cfg['bilateral'],'opencv':evaluation.cv2.__version__,'smoothing_code_sha256':digest,
+        'cache_code_sha256':base.common.digest(Path(pixel_cache.__file__)),
+        'storage':'native uint8 RGB bilateral result only; lossless PNG; blend/flip/resize unchanged'}
+    args._pixel_cache=pixel_cache.BilateralCache(root,cfg['bilateral'],identity)
+    print('Shared native bilateral cache:',root,'| first encounters compute, later epochs/strategies reuse',flush=True)
 
 
 class Reverse(torch.autograd.Function):
@@ -94,8 +128,12 @@ class PairedSource(Dataset):
         with Image.open(self.args.source_root / row['crop_path']) as opened:
             clean = opened.convert('RGB')
         detected = row['roi_status'] == 'detected'
-        changed = adaptation.smooth(clean, self.cfg['conditions'][CONDITIONS[strength]],
-                                    self.cfg['bilateral']) if detected else clean.copy()
+        if not detected:
+            changed=clean.copy()
+        elif getattr(self.args,'_pixel_cache',None) is not None:
+            changed=self.args._pixel_cache.smooth(clean,row['crop_path'],self.cfg['conditions'][CONDITIONS[strength]])
+        else:
+            changed=adaptation.smooth(clean,self.cfg['conditions'][CONDITIONS[strength]],self.cfg['bilateral'])
         if flip:
             clean = clean.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
             changed = changed.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
@@ -120,11 +158,14 @@ def prepare_validation(args, frame, cfg, data):
             return
         with Image.open(args.source_root/row['crop_path']) as opened:
             image = opened.convert('RGB')
+        native_cache=getattr(args,'_pixel_cache',None)
+        filtered=(native_cache.filtered(image,row['crop_path']) if native_cache is not None
+                  else pixel_cache.bilateral(image,cfg['bilateral']))
         for condition in missing:
             dest = cache/condition/row['crop_path']
             dest.parent.mkdir(parents=True, exist_ok=True)
             temp = dest.with_suffix('.tmp.png')
-            adaptation.smooth(image, cfg['conditions'][condition], cfg['bilateral']).save(temp, format='PNG')
+            pixel_cache.blend(image,filtered,cfg['conditions'][condition]).save(temp,format='PNG',compress_level=1)
             temp.replace(dest)
 
     with ThreadPoolExecutor(max_workers= max(1, args.workers)) as executor:
@@ -224,6 +265,7 @@ def train(args):
         raise ValueError('Manifest settings differ; use a new manifest root')
     base.common.json_write(frozen, value)
     val.to_csv(args.manifest_root/'source_validation.csv', index=False)
+    prepare_pixel_cache(args,cfg,data)
     prepare_validation(args, val, cfg, data)
     print(f'Source={args.source_images}/epoch, validation={len(val)} x4; source-only training', flush=True)
     for name in args.models:
@@ -233,18 +275,23 @@ def train(args):
             raise ValueError('Baseline source manifest mismatch')
         for strategy in args.strategies:
             config = configuration(args, name, strategy, data, cfg, initial, initial_hash)
-            identity = evaluation.key(config)
             run = args.runs_root/run_name(name, strategy, args.seed)
             run.mkdir(parents=True, exist_ok=True)
-            if (run/'config.json').exists() and json.loads((run/'config.json').read_text()) != config:
-                raise ValueError(f'Run settings differ: {run}')
+            config=compatible_config(run,config)
+            identity = evaluation.key(config)
             if (run/'completed.json').is_file():
                 done = json.loads((run/'completed.json').read_text())
                 if done['identity'] != identity or not (run/'best.pt').is_file():
                     raise ValueError('Completed run mismatch')
                 print('Already completed:', name, strategy, flush=True)
                 continue
-            base.common.json_write(run/'config.json', config)
+            if not (run/'config.json').is_file():
+                base.common.json_write(run/'config.json', config)
+            base.common.json_write(run/'runtime_optimization.json',{
+                'learning_identity_preserved':identity,'executed_code_sha256':base.common.digest(Path(__file__)),
+                'cache_helper_sha256':base.common.digest(Path(pixel_cache.__file__)),
+                'train_cache':str(getattr(args,'train_cache',None)),
+                'behavior':'pixel-identical native bilateral cache; same seeds, views, losses, optimizer and selection'})
             base.common.seed_all(args.seed)
             model, transform = base.build_model(name, pretrained=False)
             model.load_state_dict(initial['model_state_dict'], strict=True)
@@ -422,8 +469,10 @@ def evaluate(args):
                     or config['preprocessing'] != base.PREPROCESS[name]):
                 raise ValueError('Checkpoint/evaluation protocol mismatch')
             checkpoint_hash = base.common.digest(run/'best.pt')
-            identity = evaluation.key({'data':provenance, 'checkpoint':checkpoint_hash,
-                'precision':'FP32', 'torch':str(torch.__version__), 'code':base.common.digest(Path(__file__))})
+            identity_fields={'data':provenance,'checkpoint':checkpoint_hash,'precision':'FP32',
+                             'torch':str(torch.__version__),'code':base.common.digest(Path(__file__))}
+            identity=evaluation.key(identity_fields)
+            compatible_evaluations={identity,evaluation.key(dict(identity_fields,code=LEGACY_TRAINER_SHA256))}
             model, transform = None, None
             for condition in CONDITIONS:
                 prefix = args.output_root/f'{name}_{strategy}_{condition}'
@@ -432,7 +481,7 @@ def evaluate(args):
                 if report.is_file() and pred.is_file():
                     values = json.loads(report.read_text())
                     saved = pd.read_csv(pred, dtype={'crop_path':str, 'class_index':str})
-                    if (values['identity'] != identity or saved.crop_path.tolist() != frame.crop_path.tolist()
+                    if (values['identity'] not in compatible_evaluations or saved.crop_path.tolist() != frame.crop_path.tolist()
                             or saved.class_index.tolist() != frame.class_index.tolist()
                             or not np.isfinite(saved.probability_fake).all()
                             or not saved.probability_fake.between(0,1).all()):
@@ -482,6 +531,7 @@ def main():
     for field in ['target-root','output-root','baseline-evaluation-root','source-validation']:
         p.add_argument('--'+field,type=Path)
     p.add_argument('--cache-root',type=Path,default=Path('/content/celebdf_official_smoothing_cache_v1'))
+    p.add_argument('--train-cache',type=Path,default=Path('/content/smoothing_pivot_bilateral_cache_v1'))
     p.add_argument('--protocol',type=Path,default=ROOT/'configs/ffpp_c23_celebdf_smoothing_v1.json')
     p.add_argument('--models',nargs='+',choices=list(base.PREPROCESS),default=['clip_b16'])
     p.add_argument('--strategies',nargs='+',choices=STRATEGIES,default=STRATEGIES)

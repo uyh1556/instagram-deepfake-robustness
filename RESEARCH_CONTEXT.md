@@ -374,3 +374,13 @@ CDF공식test8288장×4조건평가및기존Baseline참조포함. FP32frame FPR/
 CPU4개검사통과: critic의class별gradient reversal부호/보조판별기gradient유지/fallback제외, 세모델경로의tiny실제학습과baseline보존,
 정확한완료epoch중단재개, 기존Baseline참조와새평가재사용, 혼합AUC=16교차AUC평균/혼합BER=4조건평균을확인했다.
 코랩7개코드셀을IPython변환후구문검사했다. 조건별평균·혼합AUC는mixture_summary.csv,4×4교차표는cross_condition_auc.csv에저장한다.
+
+## 스무딩 캐시 최적화와 기존 Pivot 학습 호환 재개 (2026-10-16)
+사용자 요청: 실행 중인 학습의 완료epoch를 살리고 속도를 개선한다. 기존trainer SHA b6ca3918f14ec866ff4746a993082c84b81ce110b0eca089a162322b3b562125만명시적으로호환허용한다.
+smoothing_pixel_cache.py에native uint8 RGB bilateral 결과의무손실PNG캐시를추가했다. 강도혼합·반전·resize는그대로이며Aug/Pivot/epoch가공유한다.
+기존 smoothing_roi_pilot.py와모든데이터/분할/전처리/손실/모델/optimizer/seed/validation규칙은변경하지않았다. 검증3강도생성도bilateral1회로줄이고기존PNG는재사용한다.
+학습config의코드SHA외모든필드가같아야이전run재개를허용하고기존config바이트·identity를보존한다. 실행코드·캐시정보는runtime_optimization.json에별도기록한다.
+last.pt의optimizer·모델·보조판별기·epoch·best·stale·history를복원한다. 완료run은skip, 미완료epoch의배치진행은저장되지않으므로해당epoch처음부터재시작한다.
+--train-cache 기본/content/smoothing_pivot_bilateral_cache_v1; 처음본이미지만계산, 로컬여유2GiB미만이면새캐시저장없이계산을계속한다. 기존원본/가중치/결과삭제없음.
+CPU5검사통과: 여러native크기·4강도pixel exact, 캐시hit시bilateral호출없음, paired입력/flip/fallback동일, 이전SHA체크포인트의config보존및재개후가중치/기록일치, 학습설정변경거부, 기존학습/평가재사용및7코랩셀구문검사.
+실제ColabGPU속도개선량은미측정이며첫캐시생성비용은남는다. Gitpush/Drive변경/사용자Colab프로세스중단은수행하지않았다.
