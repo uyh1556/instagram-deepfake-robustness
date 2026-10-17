@@ -486,3 +486,15 @@ best.pt는 선택된 학생이므로 교사로 쓰지 않는다. 과거 step별 
 작은 CPU6검사로 오류집계 항등식/스무딩 paired 부분집합, 순서 다른 예측 연결·원본보존·충돌거부, label-free frozen membership/누출거부,
 필요 TAR member만 추출·미요청이미지 제외·재사용, 최종EMA/래핑key복원·tiny모델추론·완료결과재사용·snapshot변경거부, MD/코랩8셀 일치·IPython문법을 확인했다.
 이 진단의 실제 전체 CDF/GPU 실행은 아직 수행하지 않았다. 앞선 GPU 미확인 문장은 각 구현 시점의 상태이며 실제 실험 완료 여부는 해당 run의 결과 파일로 확인한다.
+
+## 임시 정답 진단의 중복 Drive 폴더 경로 수정 (2026-10-18)
+사용자 Cell7 FileNotFoundError를 확인했다. Drive runs 아래 ffpp_c23_smoothing_mean_teacher_v1 이름의 폴더가 두 개이며,
+Xception은1M8_b94wg28NBMpHMfL9_LTmDNLhfuLiF, CLIP/DINO는1nBtrAyC1Duk4Rn5t03ARErgv3QJV8zP- 아래 저장된 것을 읽기전용 목록으로 확인했다.
+Xception 일반UDA run1WNxM9vAh02RBXIY7mzjOxSe_QYMaEFP-의 config/completed/last333738717bytes,
+stable run1304Z4iSJpDUF9PVw3goELzpl7JdjKinL의 config/completed/last333737693bytes 존재를 확인했다. 학습파일 소실이 아닌 경로 문제다.
+진단 helper에 run root/하위폴더/같은 runs내 경로 검색과 모호한 복수 매치 거부를 추가했다.
+마운트 이름으로 접근하지 못하면 명시한 Drive run ID에서 config/completed/last만 read-only API로 /content 전용 캐시에 읽는다.
+정확한 폴더명·필수파일 유일성·provider MD5/크기를 확인하고 원본 Drive 파일/폴더와 학습 engine은 변경하지 않는다. 임시 다운로드만 정리한다.
+Cell7에 코드갱신·필요시 Colab Google인증·검증된 Xception 두 ID 전달을 넣어 1–6셀/데이터 준비 없이 재시도할 수 있게 했다.
+두 run 위치를 추가 추론 전에 먼저 확인한다. 작은CPU8검사(기존6+중첩/중복경로 fallback·read-only API fixture 및 checksum cache)와 MD/8셀 문법이 통과했다.
+실제 Colab 사용자 인증/API 다운로드/GPU 진단 성공은 아직 미확인이다. Gitpush/Drive쓰기/폴더 재구성은 수행하지 않았다.

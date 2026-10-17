@@ -8,6 +8,7 @@ import re
 import sys
 import tarfile
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -210,6 +211,67 @@ class FailureTests(unittest.TestCase):
             ast.parse(TransformerManager().transform_cell(cell))
         self.assertIn('!python -u',cells[6])
         self.assertNotIn(' train ', '\n'.join(cells))
+
+    def test_run_resolution_nested_and_duplicate_name_drive_fallback(self):
+        args=argparse.Namespace(hard_runs_root=self.root/'runs/hard',stable_runs_root=self.root/'runs/stable',
+            seed=42,drive_run_ids={'xception/mean_teacher':'verified-folder'})
+        name='xception_mean_teacher_ffpp_c23_smoothing_mean_teacher_v1_seed42'
+        run=self.root/'runs/hard-copy/xception'/name
+        run.mkdir(parents=True)
+        config=dict(model='xception',strategy='mean_teacher',protocol=pseudo.SNAPSHOTS['mean_teacher'],seed=42)
+        errors.write_json(run/'config.json',config)
+        (run/'completed.json').write_text('{}'); (run/'last.pt').write_bytes(b'fixture')
+        with patch.object(pseudo,'stage_drive_run',side_effect=AssertionError('Sibling must resolve locally')):
+            self.assertEqual(pseudo.resolve_run(args,'xception','mean_teacher'),run)
+        args.hard_runs_root=self.root/'other/hidden'
+        with patch.object(pseudo,'stage_drive_run',return_value=run) as fallback:
+            self.assertEqual(pseudo.resolve_run(args,'xception','mean_teacher'),run)
+            fallback.assert_called_once_with(args,'verified-folder',name)
+        second=self.root/'runs/another'/name; second.mkdir(parents=True)
+        errors.write_json(second/'config.json',config)
+        args.hard_runs_root=self.root/'runs/hard'
+        with self.assertRaisesRegex(ValueError,'Multiple matching runs'):
+            pseudo.resolve_run(args,'xception','mean_teacher')
+
+    def test_exact_drive_read_only_download_checksum_and_cache(self):
+        payload={'config.json':b'{"fixture":true}', 'completed.json':b'{}', 'last.pt':b'checkpoint-fixture'}
+        calls=[]
+        class Request:
+            def __init__(self,value): self.value=value
+            def execute(self): return self.value
+        class Files:
+            def get(self,**kwargs):
+                return Request(dict(id='folder-id',name='expected-run',mimeType='application/vnd.google-apps.folder'))
+            def list(self,**kwargs):
+                self_query=kwargs['q']
+                if self_query != "'folder-id' in parents and trashed = false": raise AssertionError(self_query)
+                return Request(dict(files=[dict(id=k,name=k,size=str(len(v)),md5Checksum=hashlib.md5(v).hexdigest())
+                                           for k,v in payload.items()]))
+            def get_media(self,fileId):
+                calls.append(fileId); return payload[fileId]
+        service=types.SimpleNamespace(files=lambda:Files())
+        class Download:
+            def __init__(self,stream,data,chunksize): self.stream,self.data=stream,data
+            def next_chunk(self,num_retries):
+                self.stream.write(self.data)
+                return types.SimpleNamespace(progress=lambda:1.),True
+        google=types.ModuleType('google'); google.__path__=[]
+        auth=types.ModuleType('google.auth'); auth.default=lambda **kwargs:(object(),None)
+        google.auth=auth
+        api=types.ModuleType('googleapiclient'); api.__path__=[]
+        discovery=types.ModuleType('googleapiclient.discovery'); discovery.build=lambda *a,**kw:service
+        http=types.ModuleType('googleapiclient.http'); http.MediaIoBaseDownload=Download
+        modules={'google':google,'google.auth':auth,'googleapiclient':api,
+                 'googleapiclient.discovery':discovery,'googleapiclient.http':http}
+        args=argparse.Namespace(checkpoint_cache=self.root/'downloads')
+        with patch.dict(sys.modules,modules):
+            run=pseudo.stage_drive_run(args,'folder-id','expected-run')
+            self.assertEqual((run/'last.pt').read_bytes(),payload['last.pt'])
+            pseudo.stage_drive_run(args,'folder-id','expected-run')
+            self.assertEqual(len(calls),3)
+            (run/'last.pt').write_bytes(b'wrong')
+            with self.assertRaisesRegex(ValueError,'Cached checkpoint changed'):
+                pseudo.stage_drive_run(args,'folder-id','expected-run')
 
 
 if __name__ == '__main__':

@@ -1,8 +1,11 @@
 """Diagnostic-only non-test CDF labels and saved final EMA snapshots; never train."""
 import argparse
+import hashlib
 import json
+import os
 import shutil
 import tarfile
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -169,13 +172,111 @@ def labelled_target(args):
     return frame, labels.class_index.astype(int).to_numpy(), frozen, folder
 
 
+def stage_drive_run(args, folder_id, expected_name):
+    """Read an exact Drive folder when duplicate folder names defeat the mounted path."""
+    import google.auth
+    from googleapiclient.discovery import build
+    from googleapiclient.http import MediaIoBaseDownload
+    credentials, _ = google.auth.default(scopes=['https://www.googleapis.com/auth/drive.readonly'])
+    service = build('drive', 'v3', credentials=credentials, cache_discovery=False)
+    folder = service.files().get(fileId=folder_id, fields='id,name,mimeType').execute()
+    if folder['name'] != expected_name or folder['mimeType'] != 'application/vnd.google-apps.folder':
+        raise ValueError(f'Wrong Drive run folder ID: expected {expected_name}, got {folder.get("name")}')
+    files, token = [], None
+    while True:
+        page = service.files().list(q=f"'{folder_id}' in parents and trashed = false",
+            fields='nextPageToken,files(id,name,size,md5Checksum)', pageToken=token,
+            pageSize=100).execute()
+        files.extend(page.get('files', [])); token = page.get('nextPageToken')
+        if not token:
+            break
+    root = getattr(args, 'checkpoint_cache', Path('/content/smoothing_uda_audit_checkpoints'))/folder_id
+    root.mkdir(parents=True, exist_ok=True)
+    for name in ['config.json', 'completed.json', 'last.pt']:
+        matches = [row for row in files if row['name'] == name]
+        if len(matches) != 1 or not matches[0].get('md5Checksum'):
+            raise ValueError(f'Expected one complete {name} in Drive folder {folder_id}')
+        item = matches[0]
+        path = root/name
+        def matches_provider(candidate):
+            if not candidate.is_file() or candidate.stat().st_size != int(item['size']):
+                return False
+            checksum = hashlib.md5()
+            with candidate.open('rb') as stream:
+                for block in iter(lambda:stream.read(8*1024*1024), b''):
+                    checksum.update(block)
+            return checksum.hexdigest() == item['md5Checksum']
+        if path.exists():
+            if not matches_provider(path):
+                raise ValueError(f'Cached checkpoint changed; choose another --checkpoint-cache: {path}')
+            continue
+        print('Read exact Drive run:', expected_name, '/', name, flush=True)
+        descriptor, filename = tempfile.mkstemp(prefix=name+'.', suffix='.downloading', dir=root)
+        temp = Path(filename)
+        try:
+            with os.fdopen(descriptor, 'wb') as stream:
+                download = MediaIoBaseDownload(stream, service.files().get_media(fileId=item['id']),
+                                               chunksize=8*1024*1024)
+                complete, last_tenth = False, -1
+                while not complete:
+                    progress, complete = download.next_chunk(num_retries=3)
+                    tenth = int(progress.progress()*10) if progress else 0
+                    if tenth != last_tenth:
+                        print(f'  {name}: {min(100,tenth*10)}%', flush=True)
+                        last_tenth = tenth
+            if not matches_provider(temp):
+                raise RuntimeError(f'Incomplete Drive download: {name}')
+            temp.replace(path)
+        finally:
+            temp.unlink(missing_ok=True)
+    return root
+
+
+def resolve_run(args, model, strategy):
+    protocol = SNAPSHOTS[strategy]
+    root = args.hard_runs_root if strategy == 'mean_teacher' else args.stable_runs_root
+    name = f'{model}_{strategy}_{protocol}_seed{args.seed}'
+    def find(scope):
+        folders = ({scope} if scope.name == name else set()) | {scope/name}
+        if scope.is_dir():
+            folders.update(path for path in scope.rglob(name) if path.is_dir())
+        matches = []
+        for folder in sorted(folders):
+            if not (folder/'config.json').is_file():
+                continue
+            cfg = json_read(folder/'config.json')
+            if all(cfg.get(key) == value for key,value in
+                   dict(model=model,strategy=strategy,protocol=protocol,seed=args.seed).items()):
+                matches.append(folder)
+        if len(matches) > 1:
+            raise ValueError(f'Multiple matching runs; set a precise run root: {matches}')
+        return matches[0] if matches else None
+    found = find(root)
+    # Limit fallback to the project's runs directory, not an arbitrary Drive root.
+    if found is None and root.parent.name == 'runs':
+        found = find(root.parent)
+    if found is None:
+        folder_id = getattr(args, 'drive_run_ids', {}).get(f'{model}/{strategy}')
+        if folder_id:
+            found = stage_drive_run(args, folder_id, name)
+        else:
+            raise FileNotFoundError(f'Run not found under {root}: {name}. '
+                'Check duplicate Drive folder names; supply --drive-run-ids or the exact run root.')
+    missing = [name for name in ['config.json','completed.json','last.pt'] if not (found/name).is_file()]
+    if missing:
+        raise FileNotFoundError(f'Incomplete saved run at {found}: missing {missing}')
+    print('Resolved final EMA run:', model, strategy, found, flush=True)
+    return found
+
+
 def snapshot(args, model, strategy, frozen):
     """Read FINAL saved EMA, not selected best student and not historical EMA states."""
     import torch
     import ffpp_c23_smoothing_mean_teacher as engine
     protocol = SNAPSHOTS[strategy]
-    root = args.hard_runs_root if strategy == 'mean_teacher' else args.stable_runs_root
-    run = root/f'{model}_{strategy}_{protocol}_seed{args.seed}'
+    run = getattr(args, '_resolved_runs', {}).get((model,strategy))
+    if run is None:
+        run = resolve_run(args, model, strategy)
     cfg, done = json_read(run/'config.json'), json_read(run/'completed.json')
     path = run/'last.pt'
     state = torch.load(path, map_location='cpu', weights_only=True)
@@ -238,6 +339,9 @@ def evaluate(args):
         raise ValueError('Unexpected smoothing protocol')
     if args.device == 'cuda' and not torch.cuda.is_available():
         raise RuntimeError('Part B requires a GPU runtime; Part A is CPU-only')
+    # Resolve BOTH runs before expensive inference/cache generation.
+    args._resolved_runs = {(model,strategy):resolve_run(args,model,strategy)
+        for model in args.models for strategy in args.strategies}
     args.output_root.mkdir(parents=True, exist_ok=True)
     plan = [{**row, 'condition':'normal', 'flip':False} for row in frame.to_dict('records')]
     tables, snapshots = [], []
@@ -330,6 +434,9 @@ def parse_args():
         p.add_argument('--'+name, type=Path, required=True)
     p.add_argument('--hard-runs-root', type=Path)
     p.add_argument('--stable-runs-root', type=Path)
+    p.add_argument('--drive-run-ids', type=json.loads, default={},
+                   help='Exact read-only Drive fallback: {"xception/mean_teacher":"folder_id"}')
+    p.add_argument('--checkpoint-cache', type=Path, default=Path('/content/smoothing_uda_audit_checkpoints'))
     p.add_argument('--drive-data', type=Path)
     p.add_argument('--archive-cache', type=Path, default=Path('/content/smoothing_audit_archives'))
     p.add_argument('--target-train-cache', type=Path, default=Path('/content/smoothing_mean_teacher_target_cache_v1'))
@@ -341,6 +448,11 @@ def parse_args():
     p.add_argument('--workers', type=int, default=2)
     p.add_argument('--device', choices=['cuda','cpu'], default='cuda')
     args = p.parse_args()
+    if (not isinstance(args.drive_run_ids, dict)
+            or any(not isinstance(k,str) or not isinstance(v,str) or not v
+                   or not all(c.isalnum() or c in '_-' for c in v)
+                   for k,v in args.drive_run_ids.items())):
+        p.error('--drive-run-ids must map model/strategy names to Drive folder IDs')
     if min(args.batch_size,args.seed+1) < 1 or args.workers < 0 or len(set(args.models)) != len(args.models) or len(set(args.strategies)) != len(args.strategies):
         p.error('Invalid counts or duplicate choices')
     if args.action == 'prepare' and args.drive_data is None:

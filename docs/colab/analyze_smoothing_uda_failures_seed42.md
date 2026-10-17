@@ -8,6 +8,7 @@ Xception의 **Baseline → 일반 교사–학생 UDA → 판단 일치 선별 U
 - CDF test 이미지와 적응 이미지를 섞지 않는다. 테스트 오류 분석과 타깃 임시 정답 진단의 출력도 분리한다. 동일 인물은 기존 정책대로 허용하며, 영상·이미지 중복 및 기존 보수적 영상 제외 목록을 확인한다.
 - 타깃의 정답 비율은 바꾸지 않는다. 고정 pool의 이미지 평균과 실제 학습의 **영상균등 샘플링을 가정한 기대 가중 통계**를 구분한다. 임시 정답 채택 개수는 이번 고정·무반전 진단의 값이며 과거 실제 채택 개수가 아니다.
 - Part B는 기존 non-test real/fake TAR 2개에서 **고정 타깃 이미지와 metadata만** 준비한다. FF++·테스트 TAR·새 ZIP·baseline 체크포인트는 필요 없다. 이미 준비된 타깃은 재사용한다. 최초 TAR 복사·스무딩 캐시는 시간이 들며, 진행률은 추가 추론에서 표시한다.
+- 같은 이름의 Drive run 폴더가 중복될 수 있다. Cell 7은 코드 갱신 후 실행하고, 경로로 찾지 못하면 확인된 Xception 폴더 ID로 config/completed/last만 로컬 캐시에 읽는다. Google 인증이 한 번 표시될 수 있다. Drive 파일·폴더는 수정하지 않는다. 두 교사 위치를 먼저 확인한 뒤 추가 추론한다.
 - 기본은 Xception이다. 다른 모델에서 `stable_agreement` 결과까지 완료한 경우에만 `MODELS`를 바꾼다. 추가 비교는 `ERROR_STRATEGIES`에 `random_agreement_count` 또는 `augmentation`을 넣을 수 있다. 임시 정답 진단은 일반 UDA와 판단 일치 UDA 두 개만 지원한다.
 
 ## Cell 1 — Drive·코드 준비
@@ -130,7 +131,23 @@ assert _exit_code==0,'고정 타깃 준비 실패: 위 오류 확인. 기존 파
 새 학습은 없다. 두 최종 EMA를 각각 한 번 로딩하고, 고정 pool을 네 강도로 추론한다. 진행률은 이미지 묶음 단위다. 완성된 교사별 CSV/JSON은 같은 입력·코드·체크포인트 해시일 때 재사용한다. 이 셀만 재실행할 때 Cell 2를 다시 실행하지 않으면 같은 출력 경로를 재사용한다.
 
 ```python
-!python -u "{PROJECT}/scripts/diagnose_smoothing_pseudo_labels.py" evaluate {PSEUDO_COMMON} --batch-size 32 --workers 2
+subprocess.run(['git','-C',str(PROJECT),'pull','--ff-only'],check=True)
+import shlex
+DRIVE_RUN_IDS={
+    'xception/mean_teacher':'1WNxM9vAh02RBXIY7mzjOxSe_QYMaEFP-',
+    'xception/stable_agreement':'1304Z4iSJpDUF9PVw3goELzpl7JdjKinL',
+}
+expected=[(HARD_RUNS if strategy=='mean_teacher' else STABLE_RUNS)/f'{model}_{strategy}_ffpp_c23_smoothing_{"mean_teacher" if strategy=="mean_teacher" else "stable_uda"}_v1_seed42'/'config.json'
+          for model in MODELS for strategy in PSEUDO_STRATEGIES]
+if any(not path.is_file() for path in expected):
+    try:
+        import google.auth, googleapiclient.discovery
+    except ImportError:
+        subprocess.run([sys.executable,'-m','pip','install','-q','google-api-python-client','google-auth'],check=True)
+    from google.colab import auth
+    auth.authenticate_user()
+DRIVE_ID_ARG=shlex.quote(json.dumps(DRIVE_RUN_IDS))
+!python -u "{PROJECT}/scripts/diagnose_smoothing_pseudo_labels.py" evaluate {PSEUDO_COMMON} --drive-run-ids {DRIVE_ID_ARG} --batch-size 32 --workers 2
 assert _exit_code==0,'임시 정답 진단 실패: 위 오류 확인 후 Cell 7 재실행'
 ```
 
