@@ -437,3 +437,12 @@ FF++ val1200×4 mean BER 최소·epoch0후보·guard없음·최대10/patience3�
 comparison_with_hard.csv, condition_means_with_hard.csv, deltas_vs_hard.csv 및 기존 혼합/교차AUC·조건별원시예측을 저장한다. hard 결과 누락 시 새추론 전에 중단한다.
 CPU 작은fixture로 soft CE gradient/teacher detach/신뢰도mask/전체배치분모, hard와동일source·target계획, 두weight, 완료skip, 정확한학생·교사재개, 원본hard보존, 비0epoch학생추론·baseline재사용·비호환참조거부·코랩7셀구문을 검사했다.
 이 soft 조건의 전체GPU학습·성능은 아직 확인하지 않았다. 데이터/Drive 변경, 새TAR 생성, Gitpush, 자동예약은 수행하지 않았다.
+
+## 교사·학생 CDF 입력 조건 분리 실험 구현 (2026-10-17)
+앞선 문단의 soft GPU 미확인은 작성 시점의 기록이다. 이후 Drive 결과 확인에서 Xception/CLIP soft0.5·0.25와 DINO hard UDA·학생 추가스무딩·matched Aug 완료를 확인했다. DINO 4조건 평균 BER/AUC는 Aug31.34%/0.7416, hard UDA33.70%/0.7305이며, 교사의 높은 확신이 실제정확도라는 뜻은 아니다.
+사용자가 DINO 두 조건 추가를 승인했다. ffpp_c23_smoothing_teacher_views.py와 train_test_ffpp_c23_smoothing_teacher_views_seed42 MD/7셀 코랩을 추가했다. 기본 MODELS=['dinov2_b14']; 세 모델을 지원한다.
+normal_only는 교사·학생 모두 스무딩 전 CDF 크롭, clean_to_mixed는 교사 원본·학생 원본/약/중/강 각25%다. 두 조건 모두 기존 FF++ baseline부터 독립 시작하고, 적응 시 비라벨 스무딩 전 target 원본을 확보할 수 있다는 가정을 명시한다. 이미 보정된 이미지에 원본 짝이 없는 설정과 다르다.
+기존 hard EMA 엔진과 soft 파일은 변경하지 않고 학습·평가·manifest 참조 함수를 재사용한다. source Aug, FF++6000/epoch·검증1200×4·CDF pool5000/6000노출, seed42, hard confidence0.9, targetweight0.5/2epoch ramp, EMA0.999, LR1e-5, BN고정, 최대10/patience3, 학생 meanBER 선택/epoch0 후보를 유지한다. 실제 CDF 정답과 클래스가중치/안정성 선별은 쓰지 않는다.
+기존 hard와 source검증·target 고정 목록/순서·해시를 비교한다. legacy target plan을 먼저 모두 추첨해 이미지경로·영상·flip을 보존하고, condition은 실제학생조건으로 기록한다. scheduled_condition은 legacy 무작위추첨, teacher_condition은 normal이다. 조건별 manifest 하위폴더로 노출 CSV 충돌을 방지한다. 기존 native pixel/validation 캐시는 재사용한다.
+새 출력은 ffpp_c23_smoothing_teacher_views_v1. CDF test8288×4에서 두 모델만 새 추론하고, 기존 baseline/matched Aug/hard UDA/학생 추가스무딩 UDA는 저장예측을 검증해 재사용한다. 원본·4조건평균·강-원본 FPR/FNR/BER/AUC 변화·pooled AUC와 기존 Aug/hard 대비 차이를 domain_and_smoothing.csv로 저장한다. 테스트 threshold/epoch선택이나 인과적 효과 분리 완료로 주장하지 않는다.
+CPU 작은fixture 4검사로 원본교사/학생변형의 정확한 픽셀·fallback·반대flip, target label 독립노출, hard손실 재사용, 기존membership/결과보존, 새 학습/완료skip/정확한 학생·EMA 재개/3모델 경로, 기존결과 GPU재추론 없음, 원본/열화 분리집계, 코랩7셀/MD일치·직접진행률명령을 확인했다. 실제 GPU 학습과 성능 개선은 미확인이다. 새TAR/Drive쓰기/Gitpush/예약은 수행하지 않았다.
