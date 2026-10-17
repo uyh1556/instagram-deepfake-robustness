@@ -469,3 +469,20 @@ source6000/epoch, 기존 고정 target5000장·영상균등6000노출/epoch 및 
 CDF 공식test8288장×4에서 새 두 학생만 평가하고 기존 Baseline·Matched Aug·Hard UDA의 저장 예측을 검증하여 병합한다. fixed cutoff0.5의 FPR/FNR/BER/raw-margin AUC, 평균/조건별 차이와 두 오류 동시 감소·수치상 AUC 유지 flag를 저장한다. CDF test로 모델/임계값을 선택하지 않는다.
 새 출력 roots ffpp_c23_smoothing_stable_uda_v1, 기존 이미지·manifest·체크포인트·평가·기존 엔진 코드 보존. 새 TAR/ZIP 없음. 코랩은 직접 !python-u 진행률을 표시하고 완료skip/마지막 완료epoch 재개를 지원한다.
 작은 CPU 5검사로 native pixel·observed-first 순서·fallback·label-free 계획, 안정성mask/신뢰도/배치·예측클래스별 무작위quota/빈mask·gradient·전체배치분모·RNG보존, teacher chunk/EMA, 세 모델 tiny 학습/완료skip/동일가중치 재개, 기존 평가 재추론 없음·새8조건 추론/비교표·재사용·기존파일보존, 코랩7셀/MD일치·IPython문법을 확인했다. 실제 전체 GPU 학습이나 성능 개선은 아직 확인하지 않았다. Gitpush/Drive쓰기/예약 없음.
+
+## UDA 오류 변화 및 최종 EMA 임시 정답 진단 구현 (2026-10-18)
+사용자 요청으로 analyze_smoothing_uda_failures.py, diagnose_smoothing_pseudo_labels.py 및 analyze_smoothing_uda_failures_seed42 MD/8셀 코랩을 추가했다.
+첫 4셀은 기존 FP32 raw-margin CSV/JSON만 읽는 CPU 분석이다. 기본 Xception의 Baseline·일반 Mean Teacher·stable_agreement 4조건을 crop_path로 연결한다.
+클래스별 기존 오류/고친 오류/새 오류/순변화를 집계하고, baseline 원본정답→스무딩오답 부분집합의 구제와 후보 원본정답 유지 여부를 따로 저장한다.
+기존 오류-reader의 실제 점수·지표·manifest·ROI·스무딩·checkpoint 일치 검사를 재사용한다. 기존 reader/trainer/hash를 바꾸지 않는다.
+후반 4셀은 선택적 GPU 진단이다. 기존 고정 비라벨 target5000장에 비테스트 원본 metadata의 정답을 추론 후 집계용으로만 복원한다.
+일반UDA와 판단일치UDA의 last.pt 최종 EMA를 strict 복원해 각 이미지의 원본/약/중/강을 무반전 FP32 추론한다. 기본2교사×5000×4=40000입력, 재학습 없음.
+best.pt는 선택된 학생이므로 교사로 쓰지 않는다. 과거 step별 교사를 저장하지 않았으므로 이 진단은 학습 당시 임시정답의 재생이 아닌 최종 snapshot 사후평가다.
+두 교사의 마지막 epoch/선택 학생epoch를 기록하며, 원인 증명·테스트 기반 model/threshold 선택으로 사용하지 않는다.
+타깃 정답은 추론 Dataset/모델에 전달하지 않는다. 고정 pool과 테스트의 영상/이미지 중복·기존 보수적 제외목록·비테스트 manifest hash를 확인한다.
+기존 non-test real/fake TAR 두 개에서 고정 target crop/metadata만 준비하며 FF++/test TAR/baseline 가중치는 필요 없다. 기존 native bilateral cache identity를 그대로 재사용한다.
+임시정답 품질은 실제/예측클래스·confidence gate/추가agreement gate별로 보고, pool 이미지평균과 영상균등 기대가중치를 구분한다. 실제 과거 채택수 재현이나 GT5:5샘플링이 아니다.
+새 출력은 diagnostics/smoothing_uda_failure_v1/seed42_시간/errors 및 pseudo. 기존 데이터·학습설정·평가·체크포인트를 변경하지 않고, 새 TAR/ZIP·Gitpush·Drive쓰기·예약은 수행하지 않았다.
+작은 CPU6검사로 오류집계 항등식/스무딩 paired 부분집합, 순서 다른 예측 연결·원본보존·충돌거부, label-free frozen membership/누출거부,
+필요 TAR member만 추출·미요청이미지 제외·재사용, 최종EMA/래핑key복원·tiny모델추론·완료결과재사용·snapshot변경거부, MD/코랩8셀 일치·IPython문법을 확인했다.
+이 진단의 실제 전체 CDF/GPU 실행은 아직 수행하지 않았다. 앞선 GPU 미확인 문장은 각 구현 시점의 상태이며 실제 실험 완료 여부는 해당 run의 결과 파일로 확인한다.
