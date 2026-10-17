@@ -446,3 +446,14 @@ normal_only는 교사·학생 모두 스무딩 전 CDF 크롭, clean_to_mixed는
 기존 hard와 source검증·target 고정 목록/순서·해시를 비교한다. legacy target plan을 먼저 모두 추첨해 이미지경로·영상·flip을 보존하고, condition은 실제학생조건으로 기록한다. scheduled_condition은 legacy 무작위추첨, teacher_condition은 normal이다. 조건별 manifest 하위폴더로 노출 CSV 충돌을 방지한다. 기존 native pixel/validation 캐시는 재사용한다.
 새 출력은 ffpp_c23_smoothing_teacher_views_v1. CDF test8288×4에서 두 모델만 새 추론하고, 기존 baseline/matched Aug/hard UDA/학생 추가스무딩 UDA는 저장예측을 검증해 재사용한다. 원본·4조건평균·강-원본 FPR/FNR/BER/AUC 변화·pooled AUC와 기존 Aug/hard 대비 차이를 domain_and_smoothing.csv로 저장한다. 테스트 threshold/epoch선택이나 인과적 효과 분리 완료로 주장하지 않는다.
 CPU 작은fixture 4검사로 원본교사/학생변형의 정확한 픽셀·fallback·반대flip, target label 독립노출, hard손실 재사용, 기존membership/결과보존, 새 학습/완료skip/정확한 학생·EMA 재개/3모델 경로, 기존결과 GPU재추론 없음, 원본/열화 분리집계, 코랩7셀/MD일치·직접진행률명령을 확인했다. 실제 GPU 학습과 성능 개선은 미확인이다. 새TAR/Drive쓰기/Gitpush/예약은 수행하지 않았다.
+
+## 저장 예측 기반 FPR·FNR 동시 개선 가능성 진단 (2026-10-17)
+사용자 요청으로 scripts/analyze_smoothing_error_tradeoff.py와 analyze_smoothing_error_tradeoff_seed42 MD/4셀 코랩을 추가했다.
+학습 엔진·Torch·모델·이미지/TAR를 불러오지 않는 CPU 분석이다. 기존 hard/soft/교사 원본 평가 폴더에서 FP32 raw-margin CSV/JSON을 읽는다.
+세 모델 Baseline/Matched Aug/기존 일반 UDA는 필수, 추가 스무딩/Soft/normal_only/clean_to_mixed는 4조건 완료 결과만 포함한다. 동일 checkpoint의 중복 사본은 metadata와 점수를 대조하고, 충돌은 중단한다.
+동일 이미지·정답·영상·ROI·manifest·스무딩 설정과 원래 지표를 확인한다. 원본 파일은 수정하지 않고 입력 해시·패키지 버전·누락 조건을 별도 저장한다.
+기존 margin>=0 성능과, 각 기준(Baseline/Matched Aug)의 FN 개수 이하에서 최소 FP·FP 개수 이하에서 최소 FN을 계산한다. 동점은 하나의 그룹으로 처리하고 보간하지 않는다.
+조건별 oracle와 별도로 4조건 전체에 하나의 공통 cutoff를 적용해 각 조건의 두 오류를 동시에 유지·감소시킬 수 있는지 검사한다. 엄격 감소는 같은 이미지에서 FP와 FN 각각 최소1장 감소다.
+CDF 테스트 정답을 사용한 가능성 진단이며 배포 임계값·정식 성능·모델 선택으로 사용하지 않는다. 관측 AUC 유지 여부는 통계적 동등성 보장이 아니다. 영상 내 프레임 상관을 무시한 유의성 주장은 하지 않는다.
+출력 fixed_threshold.csv/fixed_condition_means.csv/operating_points.csv/one_threshold_all_conditions.csv/analysis_protocol.json 및 모델별 오류 곡선 PNG. 기존 결과는 보존하고 빈 시간별 diagnostics 폴더만 사용한다.
+작은 CPU fixture로 동점·상수 점수·전체 결정 임계값·단순 점수 이동, 조건별 성공과 공통 기준 실패의 차이, CSV 순서·중복·부분 완료·충돌·원본 보존 및 코랩4셀/MD 일치를 확인했다. 실제 전체 Drive 예측 분석은 아직 실행하지 않았다. Gitpush/Drive변경/새TAR/예약은 수행하지 않았다.
