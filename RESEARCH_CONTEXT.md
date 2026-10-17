@@ -457,3 +457,15 @@ CPU 작은fixture 4검사로 원본교사/학생변형의 정확한 픽셀·fall
 CDF 테스트 정답을 사용한 가능성 진단이며 배포 임계값·정식 성능·모델 선택으로 사용하지 않는다. 관측 AUC 유지 여부는 통계적 동등성 보장이 아니다. 영상 내 프레임 상관을 무시한 유의성 주장은 하지 않는다.
 출력 fixed_threshold.csv/fixed_condition_means.csv/operating_points.csv/one_threshold_all_conditions.csv/analysis_protocol.json 및 모델별 오류 곡선 PNG. 기존 결과는 보존하고 빈 시간별 diagnostics 폴더만 사용한다.
 작은 CPU fixture로 동점·상수 점수·전체 결정 임계값·단순 점수 이동, 조건별 성공과 공통 기준 실패의 차이, CSV 순서·중복·부분 완료·충돌·원본 보존 및 코랩4셀/MD 일치를 확인했다. 실제 전체 Drive 예측 분석은 아직 실행하지 않았다. Gitpush/Drive변경/새TAR/예약은 수행하지 않았다.
+
+## 스무딩 판단 일치 기반 임시 정답 선택 UDA 구현 (2026-10-17)
+사용자가 앞선 분석 후 제안한 Xception 우선 비교를 승인하여 scripts/ffpp_c23_smoothing_stable_uda.py 및 train_test_ffpp_c23_smoothing_stable_uda_seed42 MD/코랩7셀을 추가했다.
+기존 mean_teacher.py 엔진 파일을 수정하지 않고 학습·검증·재개·평가를 재사용한다. 기본 Xception이며 MODELS로 CLIP/DINO도 지원한다. 기존 FF++ baseline부터 stable_agreement와 random_agreement_count를 독립 학습한다.
+교사는 관측 view를 포함한 원본/약/중/강 네 view를 동일 flip으로 추론한다. 관측 view confidence>=0.9이며 네 argmax가 모두 같으면 stable 채택한다. 네 view 모두 confidence0.9를 요구하지 않는다. 학생은 기존 관측 view의 반대flip 한 장만 본다.
+스무딩 전 비라벨 target crop을 사용할 수 있다는 가정이며 테스트에서는 학생 한 번만 추론한다. fallback은 네 view 동일 입력으로 처리하고 실제 정답/강도를 모델 입력에 사용하지 않는다. 일관된 오답도 통과할 수 있다.
+무작위 대조군은 자기 EMA 교사의 confidence 후보 중 stable 가상 mask와 같은 수를 매 배치·예측 클래스별로 추출한다. RNG를 분리한다. 독립적인 두 run의 EMA가 달라지므로 두 run의 전체 채택 수/예측 클래스 구성까지 일치한다고 주장하지 않는다. 배치 CSV 및 history에 candidate/agreement/selected 수와 mask hash를 저장한다.
+source6000/epoch, 기존 고정 target5000장·영상균등6000노출/epoch 및 강도25% 계획을 재사용한다. 기존 hard manifest와 데이터/validation membership을 확인한다. source 원본+random smoothing CE, target hard CE를 전체 타깃 배치로 나누는 규칙, 가중치0.5/2epoch ramp/EMA0.999/LR1e-5/BN통계고정 유지.
+최대10epoch/patience3, FF++ validation1200장×4조건 평균BER 최소, epoch0 후보/AUC guard 없음. 네 teacher view 때문에 기존 UDA보다 계산량이 많으며 teacher-batch-size32로 메모리를 제한한다. expensive native bilateral은 이미지당 한번 계산/읽고 강도별blend에 재사용한다. 기존 target/source/cache identity를 유지한다.
+CDF 공식test8288장×4에서 새 두 학생만 평가하고 기존 Baseline·Matched Aug·Hard UDA의 저장 예측을 검증하여 병합한다. fixed cutoff0.5의 FPR/FNR/BER/raw-margin AUC, 평균/조건별 차이와 두 오류 동시 감소·수치상 AUC 유지 flag를 저장한다. CDF test로 모델/임계값을 선택하지 않는다.
+새 출력 roots ffpp_c23_smoothing_stable_uda_v1, 기존 이미지·manifest·체크포인트·평가·기존 엔진 코드 보존. 새 TAR/ZIP 없음. 코랩은 직접 !python-u 진행률을 표시하고 완료skip/마지막 완료epoch 재개를 지원한다.
+작은 CPU 5검사로 native pixel·observed-first 순서·fallback·label-free 계획, 안정성mask/신뢰도/배치·예측클래스별 무작위quota/빈mask·gradient·전체배치분모·RNG보존, teacher chunk/EMA, 세 모델 tiny 학습/완료skip/동일가중치 재개, 기존 평가 재추론 없음·새8조건 추론/비교표·재사용·기존파일보존, 코랩7셀/MD일치·IPython문법을 확인했다. 실제 전체 GPU 학습이나 성능 개선은 아직 확인하지 않았다. Gitpush/Drive쓰기/예약 없음.
