@@ -498,3 +498,19 @@ stable run1304Z4iSJpDUF9PVw3goELzpl7JdjKinL의 config/completed/last333737693byt
 Cell7에 코드갱신·필요시 Colab Google인증·검증된 Xception 두 ID 전달을 넣어 1–6셀/데이터 준비 없이 재시도할 수 있게 했다.
 두 run 위치를 추가 추론 전에 먼저 확인한다. 작은CPU8검사(기존6+중첩/중복경로 fallback·read-only API fixture 및 checksum cache)와 MD/8셀 문법이 통과했다.
 실제 Colab 사용자 인증/API 다운로드/GPU 진단 성공은 아직 미확인이다. Gitpush/Drive쓰기/폴더 재구성은 수행하지 않았다.
+
+## 일반 TS에 source 원본–스무딩 점수 학습 추가 (2026-10-18)
+사용자가 기존 일반 Teacher–Student UDA에 FF++ paired 점수 차이 항목 하나를 추가하는 비교를 승인했다.
+scripts/ffpp_c23_smoothing_mean_teacher_pair.py와 train_test_ffpp_c23_smoothing_mean_teacher_pair_seed42 MD/7셀 코랩을 추가했다.
+기본 Xception이며 CLIP/DINO도 MODELS로 지원한다. 새 mean_teacher_pair만 원래 FF++ baseline에서 독립 시작하고 기존 Baseline/Matched Aug/mean_teacher는 저장 FP32 raw-margin 예측으로 비교한다.
+추가 항목은 0.1 * mean[detected * SmoothL1((fake-real)_smooth - (fake-real)_clean,0)], beta=1 raw-logit 단위다.
+양쪽 현재 학생 점수 모두 역전파하며 detach/과거 baseline 점수 복원/새 보정기 없이 원래 인코더 허용 범위와 분류기를 학습한다.
+fallback은 CE만 적용하고 분모는 전체 source pair 수다. 가중치0.1은 성능 확인 전 고정한 탐색값이며 최적값으로 주장하지 않는다.
+기존 source6000/epoch 원본+랜덤3강도 CE, 비라벨 CDF 고정5000/영상균등6000노출/4조건25%, confidence0.9 hard CE,
+targetweight0.5/2epoch ramp/EMA0.999/LR1e-5/BN통계고정/validation1200x4 평균BER/epoch0/최대10/patience3를 유지한다.
+기존 source logits를 재사용하여 추가 source/target forward는 없다. 원래 teacher 엔진과 pixel/validation 캐시 identity는 보존한다.
+새 pair_v1 run/config/history/best/last/manifest/evaluation에 별도 저장하고 완료skip/완료epoch 재개를 지원한다.
+CDF test8288x4 신규 후보만 추론, 기존 세 조건 저장결과를 확인하여 comparison_with_hard/condition_means_with_hard/deltas_vs_hard/smoothing_changes.csv를 저장한다.
+CPU3검사로 손실/두 view gradient/fallback/점수 공통 offset 불변성, weight0의 기존 hard TS 가중치 완전 일치,
+동일 source/target 계획, 양의 가중치 학습·완료skip·중단재개 가중치 일치·기존 결과 재사용·기존 파일 보존,
+7코드셀 MD/노트북 일치 및 IPython 문법을 확인했다. 전체 GPU 성능은 미확인이다. Gitpush/Drive쓰기/새TAR/예약 없음.
