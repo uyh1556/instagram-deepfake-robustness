@@ -514,3 +514,23 @@ CDF test8288x4 신규 후보만 추론, 기존 세 조건 저장결과를 확인
 CPU3검사로 손실/두 view gradient/fallback/점수 공통 offset 불변성, weight0의 기존 hard TS 가중치 완전 일치,
 동일 source/target 계획, 양의 가중치 학습·완료skip·중단재개 가중치 일치·기존 결과 재사용·기존 파일 보존,
 7코드셀 MD/노트북 일치 및 IPython 문법을 확인했다. 전체 GPU 성능은 미확인이다. Gitpush/Drive쓰기/새TAR/예약 없음.
+
+## Source worst-view Aug/TS 비교 구현 (2026-10-19)
+앞선 paired Huber GPU 실험은 이후 Drive 결과에서 Xception/DINO 완료를 확인했다.
+4조건 평균 BER/AUC는 Xception 기존 TS33.76%/0.7060 대비 pair35.06%/0.6966,
+DINO 기존 TS33.70%/0.7305 대비 pair35.60%/0.6749로 악화했다. 변화 폭 감소만으로 성능 개선으로 해석하지 않는다.
+사용자가 다음 비교를 승인하여 scripts/ffpp_c23_smoothing_worst_view.py 및 train_test_ffpp_c23_smoothing_worst_view_seed42 MD/7셀 코랩을 추가했다.
+기본 Xception, MODELS로 CLIP/DINO도 지원한다. worst_view_aug/worst_view_ts를 원래 FF++ baseline에서 독립 시작한다.
+FF++ 손실만 이미지별 max(CE(clean,y),CE(random smoothing,y)) 후 평균으로 변경한다. 배치 전체 최대가 아니다.
+정확한 tie는 양쪽 gradient 반씩, 별도 배율/Huber/점수 복원/보정기 없이 원래 인코더 허용범위와 classifier를 학습한다.
+최대값은 평균보다 크거나 같아 고정 targetweight 아래 상대적인 source/target 영향까지 같다고 주장하지 않는다.
+기존 paired 두 source forward를 재사용하며 추가 forward는 없다. source6000/epoch, FF++ val1200x4 평균BER 최소,
+epoch0 후보/최대10/patience3/LR1e-5/BN통계고정/전처리/데이터/캐시를 유지한다.
+TS만 기존 label-free CDF5000/영상균등6000노출/4조건25%/반대flip/confidence0.9 hard CE/weight0.5 ramp2/EMA0.999를 적용한다.
+Aug는 target forward/teacher/임시정답 손실이 없고 target 노출과 가중치는 history에0으로 기록한다.
+CDF 공식test8288x4 신규 두 조건만 평가, 기존 Baseline/Matched Aug/일반TS 저장예측을 검증해 재사용한다.
+comparison_with_reference/condition_means_with_reference/smoothing_changes/deltas_vs_matched.csv에 각각 기존 Aug/TS 대비 차이를 저장한다.
+완료skip/완료epoch 학생·교사·optimizer 재개/직접 진행률을 지원하고 새 worst_view_v1 경로로 과거 엔진·데이터·결과를 보존한다.
+CPU3검사로 이미지별 선택·진짜/가짜 정답방향 gradient·tie, 3모델 tiny 학습·Aug target학습없음·동일source/target계획,
+완료skip·재개가중치 일치·기존결과 재사용·기존파일 보존·7셀 MD/노트북 일치·IPython 문법을 확인했다.
+전체 GPU 성능은 미확인이다. Gitpush/Drive쓰기/새TAR/ZIP/예약 없음.
