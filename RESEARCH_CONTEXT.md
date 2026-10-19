@@ -534,3 +534,33 @@ comparison_with_reference/condition_means_with_reference/smoothing_changes/delta
 CPU3검사로 이미지별 선택·진짜/가짜 정답방향 gradient·tie, 3모델 tiny 학습·Aug target학습없음·동일source/target계획,
 완료skip·재개가중치 일치·기존결과 재사용·기존파일 보존·7셀 MD/노트북 일치·IPython 문법을 확인했다.
 전체 GPU 성능은 미확인이다. Gitpush/Drive쓰기/새TAR/ZIP/예약 없음.
+
+## CLIP Worst-view 결과 및 공간 전처리 확인 (2026-10-19)
+후속 Drive 읽기에서 CLIP Worst-view Aug(6epoch/best3)·TS(4epoch/best1) 완료를 확인했다.
+4조건 평균 BER/AUC: 기존 Aug29.6564%/0.780697 대비 Worst Aug29.1756%/0.781749,
+기존 TS31.0593%/0.801455 대비 Worst TS32.5732%/0.785056. Aug의 원본→강한 FPR 증가는5.72→8.04%p로 오히려 커졌다.
+마지막 TS 평가가 요약표의 Aug행을 덮어써 조건별 Aug JSON4개를 직접 합산했다. 새 실험에서는 완료된 다른 조건도 집계한다.
+로컬 crop_manifest 전체에서 FF++80,000장/CDF104,449장 모두 정사각형(비정사각0)을 확인했다.
+실제24개RGB PNG에서 CLIP Resize224+CenterCrop224와 DINO direct224의 정규화 전 픽셀도 동일했다.
+현재 ROI에서는 center crop으로 얼굴 가장자리가 추가 제거된다는 우려가 적용되지 않는다. 기존 학습·평가 전처리를 유지하며 재학습하지 않는다.
+
+## 스무딩 특징 변화 전이 학습 구현 (2026-10-19)
+사용자가 AUC 개선을 핵심 목표로 재설정하고 새 방법의 코드/코랩을 요청했다.
+ffpp_c23_smoothing_delta_transfer.py 및 train_test_ffpp_c23_smoothing_delta_transfer_seed42 MD/7셀 코랩을 추가했다.
+기본 CLIP, MODELS로Xception/DINO도 지원한다. 원래FF++baseline에서 ce_rank/source_delta/target_delta를 독립 시작한다.
+공통 source6,000/epoch·진짜3,000/가짜각750·원본+무작위스무딩·같은flip, 세새조건모두배치1:1을보장한다.
+source/target donor는 원본/약/중/강 관측→추가약한스무딩, 같은flip 두 이미지의 EMA인코더 특징 차이를 계산한다.
+source donor는같은sourceepoch순서만섞고, target donor는기존CDF5000장 GT제거후영상균등6000회노출이다.
+CDF실제정답/임시정답/confidence/강도입력없이 delta만사용, EMA0.999는특징측정용이며delta역전파없음.
+delta를source원본·스무딩특징에양의방향으로더하고 recipient norm최대5%로cap, 절대증폭없음/첫2epoch선형ramp.
+변화가 조작 단서를 보존한다는 것은실험가정이다. donor도메인별내용·classprior차이가있으므로순수스무딩스타일인과효과로단정하지않는다.
+실제source정답CE +0.25모든진짜–가짜·view쌍softplus(real_margin-fake_margin), 인코더기존범위와분류기함께학습.
+세새조건의선택기준을 FF++val1200×4 평균raw-margin AUC최대로변경, 정확한AUC동률이면BER최소.
+epoch0후보/최대10/patience3/min_delta0.0001/BN통계고정/LR1e-5/AdamW. 기존Aug·TS의BER선택은참고비교로명시한다.
+nativeROI·스무딩·모델별전처리·기존split/targetpool/test제외유지, 기존native bilateral/probe/validation캐시재사용.
+CDF공식test8288×4 frame FP32평가까지포함하며추론은학생모델1회, donor/EMA/짝이미지불필요.
+기존Baseline/Aug/일반TS는저장예측만재사용, 새comparison/means/deltas_vs_controls/smoothing_changes와선택기준차이를저장한다.
+완료skip/완료epoch학생·EMA·optimizer정확재개/완료된형제조건집계/직접진행률지원. 추가donor2viewFP32추론으로계산량이대조군보다크다.
+CPU4검사로normcap·증폭금지·donor gradient차단·source gradient·GT순위방향·0delta중복view목적일치,
+동일flip/픽셀/fallback·targetlabel독립·3모델tiny학습/완료skip/정확재개/선택기준·저장결과재사용·기존파일보존·7셀문법을확인했다.
+전체GPU학습·성능·독창성은미확인이다. Gitpush/Drive쓰기/데이터수정/새TAR/ZIP/예약없음.
