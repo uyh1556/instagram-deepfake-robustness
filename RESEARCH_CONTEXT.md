@@ -564,3 +564,22 @@ CDF공식test8288×4 frame FP32평가까지포함하며추론은학생모델1회
 CPU4검사로normcap·증폭금지·donor gradient차단·source gradient·GT순위방향·0delta중복view목적일치,
 동일flip/픽셀/fallback·targetlabel독립·3모델tiny학습/완료skip/정확재개/선택기준·저장결과재사용·기존파일보존·7셀문법을확인했다.
 전체GPU학습·성능·독창성은미확인이다. Gitpush/Drive쓰기/데이터수정/새TAR/ZIP/예약없음.
+
+## CE+Rank에 CDF 분류 감독 추가 비교 (2026-10-20)
+이후 Drive 결과에서 delta-transfer 3모델 완료를 확인했다. 4조건평균 raw-margin AUC는
+CE+Rank Xception0.6618/CLIP0.8161/DINO0.7579, target_delta0.6619/0.8087/0.7455로 타깃delta의 추가효과를 확인하지 못했다.
+사용자 승인으로 ffpp_c23_smoothing_rank_adaptation.py 및 train_test_ffpp_c23_smoothing_rank_adaptation_seed42 MD/코랩을 추가한다.
+기본DINO, MODELS로다른2백본지원. 기존CE+Rank 완료checkpoint·저장예측은같은데이터/설정/코드/초기값인지확인후읽기전용재사용한다.
+새rank_ts/rank_sda는각각원래FF++baseline에서독립시작하며, CE+Rank가중치에서이어학습하지않는다.
+공통source6000/epoch·GT CE+0.25rank·1:1배치·원본+랜덤스무딩·동일flip·원래인코더범위+분류기·LR1e-5/BN고정유지.
+기존비테스트CDF5000장을GT제거후영상균등6000회/epoch·4조건25%·학생반대flip으로동일계획노출한다.
+rank_ts는EMA0.999/confidence0.9 hard CE, rank_sda는비테스트metadata의실제정답CE를전체관측이미지에적용한다.
+두target손실모두전체배치분모·최대weight0.5/2epoch ramp. SDA는UDA가아니며confidence선별유무에따른감독량차이도있어정답오류만의인과효과나엄밀한상한으로주장하지않는다.
+source validation1200×4 평균raw-margin AUC최대·동률BER최소·epoch0후보·최대10/patience3/min_delta0.0001을기존CE+Rank와맞춘다.
+같은예산상한이어도조기종료epoch와target계산량은다를수있다. CDF test는모델선택에사용하지않는다.
+기존pixel/validation캐시재사용·진행률·완료skip·완료epoch학생/EMA/optimizer재개·새버전출력보존을지원한다.
+CDF test8288×4 신규두조건만FP32 frame평가,기존CE+Rank와Baseline예측재사용,조건별/평균/오류변화/CE+Rank대비차이를저장한다.
+GPU정식학습·성능은아직미확인이다. 데이터/과거run/Drive변경·새TAR·Gitpush·예약없음.
+작은CPU3검사로GT독립계획·TS/SDA손실과gradient·라벨metadata검사,기존CE와동일source배치,
+targetweight0일때CE+Rank와학생가중치완전일치·TS경로GT복원미호출·정확한학생/EMA재개·완료skip,
+선택AUC·학습된학생평가·기존CE예측/파일보존·평가재사용·7셀MD/코랩일치와IPython문법을확인했다.
