@@ -603,4 +603,15 @@ runs A=1IXoSrb8q01qrm6kbCn4kJ0Xi0w0J1vRa(첫 CLIP 실행, sda_old 미완료), B=
 CLIP 재시작이 마운트에서 B를 잡아 CE+Rank부터 재학습했다(약 2시간40분 손실). A·B의 CLIP ce_rank_pooled/sda_new_balanced 파일 크기는 바이트 단위로 같아 결정적 재현으로 판단(내용 해시 비교는 안 함).
 대응: scripts/drive_folder_guard.py(읽기 전용 Drive API, 결과 경로 각 단계에 같은 이름 폴더가 2개 이상이면 중단)를 추가하고 코랩 Cell 2에서 실행한다.
 평가 출력은 모델별 최상위 폴더 evaluations/ffpp_c23_smoothing_rank_sda_pool_v2_<모델>/seed42로 바꿔 동시 Cell 6의 경쟁 생성을 없앴다. runs/manifests 경로는 진행 중 run 재개를 위해 유지한다.
-A 폴더는 아직 그대로다. 이름을 바꾸기 전까지는 Cell 2 검사가 일부러 학습을 막는다. 앞으로 새 실험의 첫 새 폴더 단계는 모델별 이름으로 만든다.
+같은 날 사용자 요청으로 runs·manifests의 A 두 폴더 이름 끝에 _duplicate_clip_first_run을 붙였다(삭제 아님). 이제 원래 이름은 B만 남는다. 앞으로 새 실험의 첫 새 폴더 단계는 모델별 이름으로 만든다.
+
+## CLIP pool v2 결과와 pool v2 UDA 구현 (2026-10-22)
+CLIP 0·1단계(Drive 확인, seed42): 4조건 pooled AUC Baseline0.796 / CE+Rank(pooled, epoch1)0.814 / SDA새풀0.880(epoch2) / SDA새풀@adapt-val0.891(epoch4) / SDA기존풀1:1 0.798.
+SDA새풀 vs CE+Rank 영상 부트스트랩 +0.066[+0.046,+0.088]. 평균 FPR/FNR 20.1%/20.1%, 원본→강 FPR증가 +8.1%p(CE+Rank +15.8%p).
+기존풀1:1은 FNR63%로 미탐이 남아, 예전 SDA 미탐은 클래스 비율보다 좁은 가짜 다양성(74영상) 때문으로 해석. FF++ val이 정체되어 epoch4에서 조기종료됐고 adapt-val은 계속 상승.
+인물 겹침: adapt-train에 나온 인물의 test 영상에서 SDA-CE+Rank +0.072[+0.043,+0.098], 안 나온 인물(진짜17/가짜24영상)에서 -0.026[-0.111,+0.054]. 인물 익히기와 도메인 적응을 구분하지 못한 한계로 명시.
+사용자 결정: 보조 인물분리 실험은 미루고 UDA 진행. scripts/ffpp_c23_smoothing_rank_uda_pool_v2.py, tests/test_smoothing_rank_uda_pool_v2.py, train_test_ffpp_c23_smoothing_rank_uda_pool_v2_seed42 MD/7셀 코랩을 추가했다.
+ts_confidence(EMA 확신0.9 hard, 예전 TS 규칙)와 ts_rank_quantile(epoch 시작 EMA 교사 margin 상위20%=가짜/하위20%=진짜, 비율 추정 없음). BBSE는 FF++→CDF 점수 이동으로 가정이 깨져 학습에 쓰지 않고 기록만 한다.
+pool v2 adapt-train을 라벨 없이(3열) 사용. 라벨은 임시정답 정확도·BBSE 오차 기록용으로만 읽으며, 라벨을 뒤집어도 가중치가 같음을 테스트로 확인. target weight0이면 pool v2 CE+Rank 가중치와 완전 일치.
+선택 FF++ val pooled AUC, adapt-val은 기록만. 평가에 간격 회복률(방법-CE+Rank)/(SDA-CE+Rank), 나온/안 나온 인물별 pooled AUC, 부트스트랩 포함. CE+Rank·SDA는 pool v2 저장 예측을 읽기만 한다.
+동시 실행 규칙 적용: runs/manifests/evaluations 첫 새 폴더가 모델별(<실험>_<모델>), Cell2 Drive 중복 검사, START NEW/RESUME 표시. CPU 테스트 4개(+기존 pool v2 5개) 통과. GPU 학습은 미실행.
