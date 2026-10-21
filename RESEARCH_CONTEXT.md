@@ -583,3 +583,16 @@ GPU정식학습·성능은아직미확인이다. 데이터/과거run/Drive변경
 작은CPU3검사로GT독립계획·TS/SDA손실과gradient·라벨metadata검사,기존CE와동일source배치,
 targetweight0일때CE+Rank와학생가중치완전일치·TS경로GT복원미호출·정확한학생/EMA재개·완료skip,
 선택AUC·학습된학생평가·기존CE예측/파일보존·평가재사용·7셀MD/코랩일치와IPython문법을확인했다.
+
+## 0·1단계: pooled AUC 선택 CE+Rank와 pool v2 균형 SDA (2026-10-21)
+Drive 저장 예측 재분석: 기존 CDF 적응 풀은 전이적 filename 제외로 비테스트 가짜 5,299→74영상(22장면), Celeb-real 482→38, YouTube-real 230 유지.
+Celeb-real/YouTube-real별 FPR·AUC는 거의 같아 YouTube 지름길 가설은 지지되지 않음. SDA 미탐은 가중치 없는 78:22 target CE와 일치.
+4조건 평균 AUC는 조건 간 순위 붕괴(강 진짜 vs 원본 가짜 CLIP0.682/DINO0.609/Xception0.459)를 반영하지 못해 선택 기준을 pooled AUC로 바꾼다.
+사용자 요청으로 scripts/ffpp_c23_smoothing_rank_sda_pool_v2.py, tests/test_smoothing_rank_sda_pool_v2.py, train_test_ffpp_c23_smoothing_rank_sda_pool_v2_seed42 MD/7셀 코랩을 새로 추가했다. 기존 파일은 변경하지 않았다.
+pool v2: test 장면키(두 ID 모두) 1-hop 제외(비전이), 가짜 장면당 최대3, 진짜 수/CR:YT는 공식 test 영상비, 장면키 연결 묶음 단위 80/20 adapt-train/adapt-val.
+로컬 매니페스트 재현: adapt-train CR110/YT72/가짜355영상, adapt-val 28/18/81영상. 구성에 폴더·라벨 metadata를 쓰는 설계 가정이며, UDA용 adapt_train_unlabelled.csv는 라벨 없음.
+조건: ce_rank_pooled(CE+Rank v1과 동일 학습·선택만 변경), sda_new_balanced(새 풀 실제정답, 배치 정확히1:1), sda_old_balanced(기존 풀 1:1, 선택).
+best.pt=FF++ val4조건 pooled AUC 최대(동률 최소 조건간AUC), best_adapt_val.pt=CDF adapt-val 동일규칙 진단 선택. 조기종료는 FF++ 기준. 공식 test는 선택에 쓰지 않음.
+평가: 공식test8288×4, pooled/조건간AUC, CR/YT별 FPR·AUC, 선택 epoch, CE+Rank(pooled) 대비 영상 부트스트랩(테스트 표본 변동만).
+CPU fixture 4검사 통과: 1-hop 제외/장면 cap/묶음 분할/고정 재현, 배치1:1 계획, pooled·교차AUC=sklearn, ce_rank_pooled가 CE+Rank v1 가중치와 완전 일치, 중단 재개 일치, 평가 재사용, 코랩7셀 문법.
+GPU 학습·성능은 미확인. 장면키는 filename 후보 관계이며 source/driver 검증이 아님. Git push/Drive 쓰기 없음.
