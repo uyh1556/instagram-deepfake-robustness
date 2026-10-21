@@ -186,6 +186,37 @@ class PoolV2Tests(unittest.TestCase):
         for path, digest in protected.items():
             self.assertEqual(digest, method.base.common.digest(Path(path)))
 
+    def test_drive_duplicate_guard(self):
+        import drive_folder_guard as guard
+
+        class Fake:
+            """parent id -> [(child id, name)] folders; answers the guard's query."""
+            def __init__(self, tree):
+                self.tree = tree
+            def files(self):
+                return self
+            def list(self, q, **_):
+                parent, name = re.match(r"'(.*?)' in parents and name = '(.*?)'", q).groups()
+                self.result = {'files': [{'id': i, 'name': n, 'createdTime': i} for i, n in self.tree.get(parent, []) if n == name]}
+                return self
+            def execute(self):
+                return self.result
+        root = Path('/content/drive/MyDrive')
+        project, experiment = 'instagram-deepfake-robustness', 'ffpp_c23_smoothing_rank_sda_pool_v2'
+        tree = {'root': [('p', project)], 'p': [('r', 'runs'), ('e', 'evaluations')],
+                'r': [('x1', experiment), ('x2', experiment)]}
+        runs = root/project/'runs'/experiment
+        evaluations = root/project/'evaluations'/f'{experiment}_clip_b16'/'seed42'
+        with self.assertRaisesRegex(guard.DuplicateFolderError, 'x1.*\n.*x2'):
+            guard.check([runs, evaluations], 'clip_b16', Fake(tree))
+        tree['r'] = [('x1', experiment)]
+        missing = guard.check([runs, evaluations], 'clip_b16', Fake(tree))
+        self.assertEqual(missing, [dict(path=str(evaluations), first_missing=f'{project}/evaluations/{experiment}_clip_b16', shared=False)])
+        tree['r'] = []
+        self.assertTrue(guard.check([runs], 'clip_b16', Fake(tree))[0]['shared'])
+        quoted = guard.child_folders(Fake({'root': [('q', "it's")]}), 'root', "it's")
+        self.assertEqual(quoted, [])  # escaped quote is sent as \' and never matched unescaped
+
     def test_colab(self):
         from IPython.core.inputtransformer2 import TransformerManager
         stem = 'train_test_ffpp_c23_smoothing_rank_sda_pool_v2_seed42'

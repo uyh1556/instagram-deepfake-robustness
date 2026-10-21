@@ -596,3 +596,11 @@ best.pt=FF++ val4조건 pooled AUC 최대(동률 최소 조건간AUC), best_adap
 평가: 공식test8288×4, pooled/조건간AUC, CR/YT별 FPR·AUC, 선택 epoch, CE+Rank(pooled) 대비 영상 부트스트랩(테스트 표본 변동만).
 CPU fixture 4검사 통과: 1-hop 제외/장면 cap/묶음 분할/고정 재현, 배치1:1 계획, pooled·교차AUC=sklearn, ce_rank_pooled가 CE+Rank v1 가중치와 완전 일치, 중단 재개 일치, 평가 재사용, 코랩7셀 문법.
 GPU 학습·성능은 미확인. 장면키는 filename 후보 관계이며 source/driver 검증이 아님. Git push/Drive 쓰기 없음.
+
+## pool v2 동시 실행 중복 Drive 폴더 사고와 대응 (2026-10-21)
+CLIP·DINO 코랩을 3초 간격(15:38:14/15:38:17)으로 시작해 runs/·manifests/ 아래 ffpp_c23_smoothing_rank_sda_pool_v2가 각각 2개 생겼다.
+runs A=1IXoSrb8q01qrm6kbCn4kJ0Xi0w0J1vRa(첫 CLIP 실행, sda_old 미완료), B=1jjSyOs4SArqc1ddVs4q6xlA5RY4OrZwM(DINO + 19:20 재시작 CLIP). manifests A=1ZrXsAj5-MfpP6bxKYfC3u4xLqUzMG63E, B=1nAauRfJd5ELz6tJ-zdP9N8s5b0zvdGuH.
+CLIP 재시작이 마운트에서 B를 잡아 CE+Rank부터 재학습했다(약 2시간40분 손실). A·B의 CLIP ce_rank_pooled/sda_new_balanced 파일 크기는 바이트 단위로 같아 결정적 재현으로 판단(내용 해시 비교는 안 함).
+대응: scripts/drive_folder_guard.py(읽기 전용 Drive API, 결과 경로 각 단계에 같은 이름 폴더가 2개 이상이면 중단)를 추가하고 코랩 Cell 2에서 실행한다.
+평가 출력은 모델별 최상위 폴더 evaluations/ffpp_c23_smoothing_rank_sda_pool_v2_<모델>/seed42로 바꿔 동시 Cell 6의 경쟁 생성을 없앴다. runs/manifests 경로는 진행 중 run 재개를 위해 유지한다.
+A 폴더는 아직 그대로다. 이름을 바꾸기 전까지는 Cell 2 검사가 일부러 학습을 막는다. 앞으로 새 실험의 첫 새 폴더 단계는 모델별 이름으로 만든다.
