@@ -638,3 +638,13 @@ scripts/analyze_smoothing_vs_domain_gap.py, tests/test_smoothing_vs_domain_gap.p
 스무딩은 판별력을 거의 잃게 하지 않고(원본-원본 대비 강-강 AUC 손실 CLIP 약0, DINO 약0.01) 진짜·가짜 점수를 모두 가짜 쪽으로 민다. 진짜가 더 스무딩된 칸 평균 CLIP 0.737/DINO 0.662 vs 가짜가 더 스무딩된 칸 0.852/0.781이 서로 상쇄되어 pooled AUC는 이 쏠림을 구조적으로 보지 못한다.
 쏠림(두 방향 차이)은 CE+Rank가 DINO 0.119→0.007, CLIP 0.115→0.050으로 크게 줄이지만 matched(도메인 판별력)를 잃는다. TS 계열의 CLIP 개선도 도메인 몫 감소(0.081→0.062)다.
 해석: 스무딩만 겨냥한 방법(예: 10-15 C 비라벨 타깃 일관성)은 pooled AUC를 올릴 수 없다. 연구 질문 후보 A(스무딩된 진짜 오탐 감소; 주 지표 강진짜vs원본가짜 AUC·고정임계값 FPR) vs B(CDF AUC 향상=일반 도메인 적응). 권고는 A, 사용자 결정 대기.
+
+## 스무딩 점수 이동·임계값 오탐 진단 (2026-10-22)
+scripts/analyze_smoothing_threshold_shift.py, tests/test_smoothing_threshold_shift.py, analyze_smoothing_threshold_shift MD/2셀 CPU 코랩 추가. 저장된 CDF test 예측(8,288×4)만 읽는다.
+지표: skew(가짜가 더 스무딩된 칸 AUC평균-진짜가 더 스무딩된 칸), 확률0.5 조건별 FPR/FNR, 원본 진짜 FPR5% 임계값에서 강 스무딩 진짜 FPR·짝 뒤집힘, 원본→강 margin 이동(원본 진짜 std 단위). @normal5는 test 진짜 라벨로 맞춘 진단 전용.
+결과(skew / 진짜 뒤집힘 / 강진짜 FPR@normal5): Xception Baseline 0.220/17.5%/22.1% → CE+Rank v1 -0.009/1.3%/4.2%(이동 0, 완전 해소);
+DINO 0.119/9.6%/14.4% → CE+Rank v1 0.045/3.0%/7.7%, 6ep 0.007/1.4%/5.6%; CLIP 0.115/9.4%/14.4% → CE+Rank v1 0.086/5.5%/10.5%, 6ep 0.050/2.3%/7.1%(진짜 이동 0.39σ 잔존).
+CLIP TS EMA/head분리 뒤집힘 3.1%/3.5%. 이전 "CE+Rank는 CLIP에만 효과"는 pooled AUC 기준의 착시이며, 스무딩 지표로는 CLIP에서 효과가 가장 작다.
+확률0.5에서 원본 진짜 FPR이 23~45%(CE+Rank Xception 41%, DINO 39%)로 스무딩과 무관한 임계값/도메인 오탐이 크다. 스무딩이 더한 FPR(원본→강)은 Baseline Xception +29.5/CLIP +19/DINO +17%p → CE+Rank -0.5/+16/+7%p.
+해석: 스무딩 쏠림은 CE+Rank로 Xception 해소, DINO 대부분, CLIP 절반. 남은 과제는 CLIP 잔여 쏠림과, 스무딩과 별개인 CDF 임계값/도메인 오탐의 분리 서술.
+코랩의 pool v2 경로(ce_rank_pooled, sda_new_balanced)가 실제 폴더와 맞지 않아 건너뛰었다. CLIP CE+Rank v1 pooled 0.8135가 pool v2 CE+Rank와 같아 CE+Rank 결론에는 영향 없음. SDA 상한 비교는 경로 수정 후 재실행 필요.
