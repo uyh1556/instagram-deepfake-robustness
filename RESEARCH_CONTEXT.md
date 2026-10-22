@@ -648,3 +648,13 @@ CLIP TS EMA/head분리 뒤집힘 3.1%/3.5%. 이전 "CE+Rank는 CLIP에만 효과
 확률0.5에서 원본 진짜 FPR이 23~45%(CE+Rank Xception 41%, DINO 39%)로 스무딩과 무관한 임계값/도메인 오탐이 크다. 스무딩이 더한 FPR(원본→강)은 Baseline Xception +29.5/CLIP +19/DINO +17%p → CE+Rank -0.5/+16/+7%p.
 해석: 스무딩 쏠림은 CE+Rank로 Xception 해소, DINO 대부분, CLIP 절반. 남은 과제는 CLIP 잔여 쏠림과, 스무딩과 별개인 CDF 임계값/도메인 오탐의 분리 서술.
 코랩의 pool v2 경로(ce_rank_pooled, sda_new_balanced)가 실제 폴더와 맞지 않아 건너뛰었다. CLIP CE+Rank v1 pooled 0.8135가 pool v2 CE+Rank와 같아 CE+Rank 결론에는 영향 없음. SDA 상한 비교는 경로 수정 후 재실행 필요.
+
+## CDF 저주파 스타일 진단 (FDA, 2026-10-22)
+scripts/diagnose_cdf_style_gap.py, tests/test_cdf_style_gap.py, diagnose_cdf_style_gap MD/2셀 GPU 코랩 추가. 학습·선택 없음, 추론만.
+CDF test 8,288장(원본·강 스무딩)을 256×256으로 맞추고 채널별 중앙 저주파 Fourier 진폭(β=0.01/0.03)만 교체, 위상·고주파 유지.
+변형: resize(대조), ffpp_b(FF++ train 2,000장 평균 진폭), cdf_b(CDF test 2,000장 라벨 없이 평균, 평균 진폭 교체 자체의 대조). 모델: 세 백본 Baseline과 CE+Rank(delta_transfer_v1).
+원본 AUC 변화(resize 대비, ffpp_b0.01/cdf_b0.01/ffpp_b0.03/cdf_b0.03): CLIP Baseline -0.063/-0.050/-0.123/-0.090, CE+Rank -0.054/-0.046/-0.106/-0.077;
+DINO Baseline -0.042/-0.051/-0.053/-0.032, CE+Rank -0.039/-0.052/-0.070/-0.055; Xception Baseline -0.017/-0.028/-0.014/-0.017, CE+Rank -0.017/-0.025/-0.001/-0.006.
+12개 조합 모두 FF++ 스타일로 AUC가 오르지 않았고, ffpp_b와 cdf_b 차이는 ±0.01~0.03로 방향도 일정하지 않다. 변환 시 원본 진짜 FPR이 CLIP 51%→87~98%, DINO 23%→62~85%로 증가(인공 변형을 조작 흔적으로 읽음).
+해석: 저주파 스타일은 FF++→CDF 차이의 원인이 아니다. 앞의 분해와 합치면 차이는 조작 흔적(합성 방식·품질) 쪽. FF++→CDF 스타일 짝 학습은 진행하지 않는다.
+한계: FDA 연산 손상이 순수 스타일 효과를 가렸을 수 있으나 cdf_b 대비 FF++ 스타일 고유 이득은 어디에도 없었다. 실행 약 2시간(CPU FFT를 6개 체크포인트마다 반복); 이후 공유 변환은 캐시하기로 함.
