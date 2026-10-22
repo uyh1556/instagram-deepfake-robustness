@@ -627,3 +627,14 @@ scripts/ffpp_c23_smoothing_uda_teacher_pool_v2.py, tests/test_smoothing_uda_teac
 조건: ce_rank_fixed(대조군), ts_ema(TS 기본), ts_frozen_teacher(교사=baseline 고정), ts_decoupled_head(임시정답은 보조 head만 학습, 교사는 인코더+판정head EMA; DST의 분리 부분만).
 주 결과=6epoch final.pt, 보조=best_ffpp.pt(@ffpp). 라벨 없는 검증지표(엔트로피, 교사-학생 일치, SND)와 보조 head adapt-val을 기록만 한다.
 CPU 테스트: ce_rank_fixed가 pool v2 CE+Rank, ts_ema가 이전 ts_confidence와 같은 epoch까지 가중치 완전 일치; 고정 교사가 baseline과 동일 유지; 보조 head 손실이 판정 head에 gradient를 주지 않음; 중단 재개 일치; 평가 재사용. GPU 학습 미실행.
+
+## 교사 보호 실험 결과와 도메인/스무딩 AUC 분해 (2026-10-22)
+교사 보호(CLIP/DINO, seed42, 고정 6epoch final): 4조건 pooled AUC Baseline 0.796/0.723, CE+Rank고정 0.763/0.703, TS EMA 0.807/0.695, 고정교사 0.795/0.730, head분리 0.818/0.717 (SDA 0.880/0.858).
+head분리-TS EMA CLIP +0.010[+0.003,+0.018], DINO +0.022[+0.012,+0.034]로 일관되지만 작고, Baseline 대비 CLIP +0.022/DINO -0.005. 고정교사-EMA는 CLIP -0.012, DINO +0.035로 방향이 갈린다.
+교사 임시정답 정확도는 6epoch 내내 고정(CLIP 약75%, DINO 약81%)이고 고정교사와 EMA가 같다: EMA 교사 표류는 없었고 병목은 baseline 교사 품질 자체. CLIP 교사는 가짜 약4,500/진짜 약1,150개를 골라 가짜 쪽 23%·진짜 쪽 32%가 오답, FPR 0.56~0.68.
+CE+Rank는 6epoch에서 CLIP 0.814→0.763으로 떨어져(source 과적합) 간격 회복률 기준이 부풀려진다. 라벨 없는 지표(엔트로피/SND/일치도)는 adapt-val과 함께 움직이지 않았다. Xception은 미실행(사용자 판단으로 보류).
+scripts/analyze_smoothing_vs_domain_gap.py, tests/test_smoothing_vs_domain_gap.py 추가(CPU, 저장된 cross_condition_auc.csv만 사용, 테스트 라벨 진단 전용·선택 미사용).
+분해: matched=같은 조건 진짜·가짜 AUC 평균, 스무딩 몫=matched-pooled16(SDA 대비), 도메인 몫=SDA matched-matched. SDA와의 pooled 차이 중 도메인 몫이 97~100%: CLIP Baseline 0.084=도메인0.081+스무딩0.003, DINO 0.135=0.133+0.002.
+스무딩은 판별력을 거의 잃게 하지 않고(원본-원본 대비 강-강 AUC 손실 CLIP 약0, DINO 약0.01) 진짜·가짜 점수를 모두 가짜 쪽으로 민다. 진짜가 더 스무딩된 칸 평균 CLIP 0.737/DINO 0.662 vs 가짜가 더 스무딩된 칸 0.852/0.781이 서로 상쇄되어 pooled AUC는 이 쏠림을 구조적으로 보지 못한다.
+쏠림(두 방향 차이)은 CE+Rank가 DINO 0.119→0.007, CLIP 0.115→0.050으로 크게 줄이지만 matched(도메인 판별력)를 잃는다. TS 계열의 CLIP 개선도 도메인 몫 감소(0.081→0.062)다.
+해석: 스무딩만 겨냥한 방법(예: 10-15 C 비라벨 타깃 일관성)은 pooled AUC를 올릴 수 없다. 연구 질문 후보 A(스무딩된 진짜 오탐 감소; 주 지표 강진짜vs원본가짜 AUC·고정임계값 FPR) vs B(CDF AUC 향상=일반 도메인 적응). 권고는 A, 사용자 결정 대기.
