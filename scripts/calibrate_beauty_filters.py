@@ -1,7 +1,9 @@
 """Match each held-out filter's strength to the training bilateral filter on FF++ TRAIN frames only.
 
-Target: median skin-mask high-frequency energy reduction of the full (unblended) training bilateral
-filter. For each held-out filter its one PARAMETER (beauty_smoothing_filters.PARAMETER) is searched on a log grid, refined by
+Target: median skin-mask mean absolute RGB change (0-255) of the full (unblended) training bilateral
+filter, i.e. how much it edits the skin. (A high-frequency-energy target was tried first: on FF++ c23 it is
+dominated by compression/structure edges, ~0.04 for the bilateral, and not monotone for the weighted median;
+it is still reported per filter as a descriptive measure.) For each held-out filter its one PARAMETER (beauty_smoothing_filters.PARAMETER) is searched on a log grid, refined by
 log-linear interpolation between the bracketing grid points and re-measured. Blend strengths
 (weak/medium/strong = 0.25/0.5/0.75 of the full filter inside the same mask) are then shared, so the
 held-out views differ from the bilateral views only by the filter algorithm. CPU only; no Celeb-DF.
@@ -36,8 +38,12 @@ def load(args, rows):
     return out
 
 
-def reductions(images, name, value):
-    return np.array([beauty.hf_reduction(array, beauty.full(name, array, value), mask) for _, array, mask in images])
+def changes(images, name, value):
+    return np.array([beauty.skin_change(array, beauty.full(name, array, value), mask) for _, array, mask in images])
+
+
+def hf(images, name, value):
+    return float(np.median([beauty.hf_reduction(array, beauty.full(name, array, value), mask) for _, array, mask in images]))
 
 
 def summary(values):
@@ -46,15 +52,15 @@ def summary(values):
 
 def calibrate(images, name, target, grid=None):
     grid = beauty.GRIDS[beauty.PARAMETER[name]] if grid is None else grid
-    medians = [float(np.median(reductions(images, name, f))) for f in grid]
+    medians = [float(np.median(changes(images, name, f))) for f in grid]
     order = np.argsort(medians)
     xs, ys = np.log(np.asarray(grid)[order]), np.asarray(medians)[order]
     if not ys[0] <= target <= ys[-1]:
         raise ValueError(f'{name}: bilateral target {target:.4f} outside grid range [{ys[0]:.4f}, {ys[-1]:.4f}]')
     value = float(np.exp(np.interp(target, ys, xs)))
-    final = reductions(images, name, value)
-    return dict(parameter=beauty.PARAMETER[name], value=value, grid=[dict(value=float(f), median=m) for f, m in zip(grid, medians)],
-                **summary(final))
+    final = changes(images, name, value)
+    return dict(parameter=beauty.PARAMETER[name], value=value, grid=[dict(value=float(f), median_change=m) for f, m in zip(grid, medians)],
+                hf_reduction_median=hf(images, name, value), **summary(final))
 
 
 def preview(images, settings, chosen, path, count=4):
@@ -78,17 +84,20 @@ def main():
     settings = json.loads(args.protocol.read_text())['bilateral']
     rows = sample(args)
     images = load(args, rows)
-    bilateral = np.array([beauty.hf_reduction(a, beauty.bilateral_full(i, settings), m) for i, a, m in images])
+    filtered = [beauty.bilateral_full(i, settings) for i, _, _ in images]
+    bilateral = np.array([beauty.skin_change(a, f, m) for (_, a, m), f in zip(images, filtered)])
+    bilateral_hf = float(np.median([beauty.hf_reduction(a, f, m) for (_, a, m), f in zip(images, filtered)]))
     target = float(np.median(bilateral))
-    print(f'{len(images)} FF++ train frames | bilateral full-strength HF reduction median={target:.4f}', flush=True)
+    print(f'{len(images)} FF++ train frames | bilateral full-strength skin change median={target:.3f} (HF reduction {bilateral_hf:.3f})', flush=True)
     result = dict(protocol='beauty_filter_calibration_v1', images=len(images), seed=args.seed, sigma_color=beauty.SIGMA_COLOR,
                   spatial_fraction=beauty.SPATIAL_FRACTION,
-                  hf_sigma_fraction=beauty.HF_SIGMA_FRACTION, blend_strengths={'smooth_weak': .25, 'smooth_medium': .5, 'smooth_strong': .75},
-                  bilateral=dict(settings=settings, **summary(bilateral)), filters={}, data='FF++ train frames only, roi_status=detected')
+                  hf_sigma_fraction=beauty.HF_SIGMA_FRACTION, target='median skin-mask mean |RGB change| of the full filter', blend_strengths={'smooth_weak': .25, 'smooth_medium': .5, 'smooth_strong': .75},
+                  bilateral=dict(settings=settings, hf_reduction_median=bilateral_hf, **summary(bilateral)), filters={}, data='FF++ train frames only, roi_status=detected')
     for name in beauty.FILTERS:
         result['filters'][name] = calibrate(images, name, target)
         r = result['filters'][name]
-        print(f"{name}: {r['parameter']}={r['value']:.5g} median={r['median']:.4f} IQR=[{r['q25']:.4f}, {r['q75']:.4f}]", flush=True)
+        print(f"{name}: {r['parameter']}={r['value']:.5g} skin change median={r['median']:.3f} IQR=[{r['q25']:.3f}, {r['q75']:.3f}] "
+              f"(HF reduction {r['hf_reduction_median']:.3f})", flush=True)
     args.output_root.mkdir(parents=True, exist_ok=True)
     (args.output_root/'calibration.json').write_text(json.dumps(result, indent=1)+'\n')
     preview(images, settings, {k: v['value'] for k, v in result['filters'].items()}, args.output_root/'preview_strong.png')

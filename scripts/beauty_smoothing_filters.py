@@ -56,8 +56,15 @@ def high_frequency_energy(array, mask):
     return float((mask*residual**2).sum()/mask.sum())
 
 
+def skin_change(original, filtered, mask):
+    """Mask-weighted mean absolute RGB change (0-255): how much the filter edits the skin. Calibration target."""
+    diff = np.abs(filtered.astype(np.float32)-original.astype(np.float32)).mean(axis=2)
+    return float((mask*diff).sum()/mask.sum())
+
+
 def hf_reduction(original, filtered, mask):
-    """1 - E_hf(filtered)/E_hf(original) inside the skin mask; 0 = untouched, 1 = no detail left."""
+    """1 - E_hf(filtered)/E_hf(original) inside the skin mask. Descriptive only: on FF++ c23 it is dominated by
+    compression/structure edges and is not monotone for the weighted median, so it is NOT the calibration target."""
     return 1-high_frequency_energy(filtered, mask)/max(high_frequency_energy(original, mask), 1e-12)
 
 

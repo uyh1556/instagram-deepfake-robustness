@@ -9,11 +9,12 @@
 |`fast_global`|전역 에너지 최적화 (Min et al., TIP 2014)|`ximgproc.fastGlobalSmootherFilter`|평활 범위 (ROI 한 변 대비 비율)|
 |`domain_transform`|구조 보존·guided 계열 (Gastal & Oliveira, SIGGRAPH 2011)|`ximgproc.dtFilter`|색 시그마 (공간 시그마는 bilateral과 같은 0.02)|
 
-- 기준: 피부 마스크 안 **고주파 에너지 감소율**(1 − 스무딩 후 고주파 / 원본 고주파)의 중앙값이 bilateral 완전 스무딩과 같아지도록.
+- 기준: 피부 마스크 안 **평균 변화량**(필터 전후 RGB 차이의 평균, 0~255)의 중앙값이 bilateral 완전 스무딩과 같아지도록. 즉 "피부를 얼마나 고쳤는가"를 맞춘다.
+  - 처음 쓴 고주파 에너지 감소율은 FF++ c23에서 압축 블록·얼굴 윤곽 엣지가 지배해 bilateral이 0.04밖에 안 나오고, weighted median에서는 음수가 되어 맞출 수 없었다. 지금은 참고값으로만 기록한다.
 - 데이터: **FF++ train** 프레임 300장(진짜·가짜 반반, 얼굴 검출 성공분). CDF는 쓰지 않는다.
-- 약·중·강은 bilateral과 똑같이 같은 피부 마스크 안에서 0.25/0.5/0.75 섞기. 이후 평가는 우선 **강(0.75)만** 쓴다.
+- 약·중·강은 bilateral과 똑같이 같은 피부 마스크 안에서 0.25/0.5/0.75 섞기. 이후 평가는 세 단계를 모두 쓴다.
 - 결과: Drive `manifests/beauty_filter_calibration_v1/` — `calibration.json`(필터별 값·중앙값·사분위), `preview_strong.png`(원본·bilateral·세 필터 강 스무딩 비교 4장), `calibration_frames.csv`.
-- 런타임: **CPU**면 충분하다. weighted median이 가장 느리다(수십 분 예상, 실측 아님).
+- 런타임: **CPU**면 충분하다. weighted median이 가장 느리다(로컬 40장 기준 약 100초 → 300장이면 10~15분 예상).
 
 ## Cell 1 — 코드·FF++ 준비·OpenCV contrib 설치
 

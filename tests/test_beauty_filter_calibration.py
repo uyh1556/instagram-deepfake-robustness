@@ -27,6 +27,12 @@ def fake_full(name, array, value):
 
 
 class BeautyFilterTests(unittest.TestCase):
+    def test_skin_change_measure(self):
+        _, array, mask = textured(3)
+        self.assertEqual(beauty.skin_change(array, array, mask), 0.)
+        shifted = np.clip(array.astype(int)+4, 0, 255).astype(np.uint8)
+        self.assertAlmostEqual(beauty.skin_change(array, shifted, mask), 4., places=4)
+
     def test_hf_reduction_bounds(self):
         _, array, mask = textured(0)
         self.assertAlmostEqual(beauty.hf_reduction(array, array, mask), 0.)
@@ -39,14 +45,14 @@ class BeautyFilterTests(unittest.TestCase):
         images = [textured(s) for s in range(4)]
         grid = np.geomspace(.003, .05, 9)
         with patch.object(beauty, 'full', side_effect=fake_full):
-            low, high = [float(np.median(calibration.reductions(images, 'fast_global', g))) for g in [grid[2], grid[6]]]
+            low, high = [float(np.median(calibration.changes(images, 'fast_global', g))) for g in [grid[2], grid[6]]]
             target = (low+high)/2
             result = calibration.calibrate(images, 'fast_global', target, grid)
-            self.assertLess(abs(result['median']-target), .03)
+            self.assertLess(abs(result['median']-target), .1*target)
             self.assertTrue(grid[2] < result['value'] < grid[6])
             self.assertEqual(result['parameter'], 'spatial_fraction')
             with self.assertRaisesRegex(ValueError, 'outside grid'):
-                calibration.calibrate(images, 'fast_global', 1.5, grid)
+                calibration.calibrate(images, 'fast_global', 500., grid)
 
     def test_blend_uses_training_mask_and_strength(self):
         image, array, mask = textured(1)
