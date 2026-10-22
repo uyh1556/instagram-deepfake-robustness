@@ -615,3 +615,15 @@ ts_confidence(EMA 확신0.9 hard, 예전 TS 규칙)와 ts_rank_quantile(epoch �
 pool v2 adapt-train을 라벨 없이(3열) 사용. 라벨은 임시정답 정확도·BBSE 오차 기록용으로만 읽으며, 라벨을 뒤집어도 가중치가 같음을 테스트로 확인. target weight0이면 pool v2 CE+Rank 가중치와 완전 일치.
 선택 FF++ val pooled AUC, adapt-val은 기록만. 평가에 간격 회복률(방법-CE+Rank)/(SDA-CE+Rank), 나온/안 나온 인물별 pooled AUC, 부트스트랩 포함. CE+Rank·SDA는 pool v2 저장 예측을 읽기만 한다.
 동시 실행 규칙 적용: runs/manifests/evaluations 첫 새 폴더가 모델별(<실험>_<모델>), Cell2 Drive 중복 검사, START NEW/RESUME 표시. CPU 테스트 4개(+기존 pool v2 5개) 통과. GPU 학습은 미실행.
+
+## pool v2 UDA 결과와 교사 보호 실험 구현 (2026-10-22)
+CLIP/DINO UDA(seed42, FF++ 조기종료): 4조건 pooled AUC CE+Rank 0.814/0.723, TS 확신0.9 0.823/0.725, TS 순위20% 0.778/0.678, SDA 0.880/0.858.
+TS 확신 vs CE+Rank CLIP +0.010[+0.001,+0.017], DINO +0.002[-0.011,+0.015]; TS 순위는 -0.035/-0.045로 구간이 0 아래. 간격 회복률 TS 확신 14%/1%.
+순위 규칙은 가짜 쪽 임시정답 오답 6~8%로 깨끗했지만 진짜 쪽을 가짜 쪽과 같은 수만큼 채택해 진짜 라벨의 24~37%가 실제 가짜였고 FNR이 크게 증가했다. 전체 정확도는 확신 규칙과 비슷(74~84%).
+DINO 순위 규칙은 epoch이 지날수록 진짜 쪽 오답 증가·adapt-val 하락(악순환). TS 확신은 두 모델 모두 epoch1이 선택됐지만 기록용 adapt-val은 이후 계속 상승.
+DINO CE+Rank는 동일 데이터 순서에서도 GPU 비결정성으로 이전 run과 epoch1부터 갈라져 CDF 0.757 vs 0.723; DINO의 0.03~0.04 차이는 run 변동으로 본다.
+사용자 결정: 순위 규칙 중단, source 손실은 CE+Rank 유지(고정 source 설정으로 보고), 조기종료 대신 고정 6epoch(ramp2+최대가중치4, 결과 보기 전 원리로 결정).
+scripts/ffpp_c23_smoothing_uda_teacher_pool_v2.py, tests/test_smoothing_uda_teacher_pool_v2.py, train_test_ffpp_c23_smoothing_uda_teacher_pool_v2_seed42 MD/7셀 코랩 추가(기존 스크립트 변경 없음).
+조건: ce_rank_fixed(대조군), ts_ema(TS 기본), ts_frozen_teacher(교사=baseline 고정), ts_decoupled_head(임시정답은 보조 head만 학습, 교사는 인코더+판정head EMA; DST의 분리 부분만).
+주 결과=6epoch final.pt, 보조=best_ffpp.pt(@ffpp). 라벨 없는 검증지표(엔트로피, 교사-학생 일치, SND)와 보조 head adapt-val을 기록만 한다.
+CPU 테스트: ce_rank_fixed가 pool v2 CE+Rank, ts_ema가 이전 ts_confidence와 같은 epoch까지 가중치 완전 일치; 고정 교사가 baseline과 동일 유지; 보조 head 손실이 판정 head에 gradient를 주지 않음; 중단 재개 일치; 평가 재사용. GPU 학습 미실행.
