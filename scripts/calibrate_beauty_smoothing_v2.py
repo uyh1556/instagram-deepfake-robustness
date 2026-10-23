@@ -23,8 +23,10 @@ def load(args, rows, parser):
         with Image.open(args.source_root/path) as opened:
             images.append(opened.convert('RGB'))
     masks = []
+    print(f'Parsing {len(images)} frames on {parser.device}', flush=True)
     for start in range(0, len(images), args.parse_batch):
         masks += parser.masks(images[start:start+args.parse_batch])
+        print(f'  parsed {len(masks)}/{len(images)}', flush=True)
     return [(image, np.asarray(image), mask) for image, mask in zip(images, masks)]
 
 
@@ -37,7 +39,10 @@ def summary(values):
 
 
 def calibrate(images, name, target, grid):
-    medians = [float(np.median(changes(images, name, v))) for v in grid]
+    medians = []
+    for v in grid:
+        medians.append(float(np.median(changes(images, name, v))))
+        print(f'  {name} reach {v:.5g}: skin change median {medians[-1]:.3f}', flush=True)
     order = np.argsort(medians)
     xs, ys = np.log(np.asarray(grid)[order]), np.asarray(medians)[order]
     if not ys[0] <= target <= ys[-1]:
