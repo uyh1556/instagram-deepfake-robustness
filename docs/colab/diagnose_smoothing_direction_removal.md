@@ -1,0 +1,58 @@
+# Smoothing_Direction_Removal (후보 3, GPU, 학습 없음)
+
+**질문:** 특징에서 **스무딩 방향**을 빼면, 증강 모델의 "감지하고 깎기"(보정)가 사라지는가?
+D1에서 증강 모델은 스무딩 흔적을 특징에 그대로 갖고 있고(감지 AUC 거의 불변), Xception은 필터와 상관없이 거의 일정한 점수를 깎았다.
+그 흔적 방향을 지웠을 때 처음 보는 필터의 역전(예: Xception domain transform에서 가짜가 진짜 쪽으로 넘어감)이 줄어드는지 본다.
+
+- 방향 찾기: **FF++ train** 1,200장의 (bilateral 강 0.75 − 원본) 특징 차이에서 상위 k개 방향(SVD). **학습 필터(bilateral)만** 쓴다 — 처음 보는 필터 3개는 끝까지 보지 않는다.
+- 제거: 그 방향을 특징에서 빼고(투영), 마지막 분류기(로지스틱)만 FF++ train **원본** 특징으로 다시 맞춘다. 백본은 그대로.
+  - `model_head`: 원래 모델 그대로(기준). `refit`(k=0): 방향은 안 빼고 분류기만 다시 맞춤(분류기 재학습 효과 대조군). `remove_k1/4/16`: 방향 1·4·16개 제거.
+- 채점: **FF++ val** 1,200장(D1과 같은 표본 규칙)의 원본 vs 강 스무딩 4종(v1). 원본 AUC, FP/FN gap, 점수 이동(원본 진짜 표준편차 단위), 제거 후 스무딩 감지 AUC.
+- 모델: v1 source ablation seed42의 Baseline / aug_pair / aug_pair_rank × 세 백본. **한 번 실행에 세 백본을 모두** 돌려 스무딩 뷰를 한 번만 만든다.
+- CDF·test는 쓰지 않는다. 결과: Drive `evaluations/smoothing_direction_removal_v1/direction_removal.csv`.
+
+## Cell 1 — 코드·FF++ train/val 준비·OpenCV contrib
+
+```python
+from google.colab import drive
+drive.mount('/content/drive')
+from pathlib import Path
+import subprocess, sys
+
+PROJECT=Path('/content/instagram_deepfake_robustness')
+if PROJECT.exists():
+    subprocess.run(['git','-C',str(PROJECT),'pull','--ff-only'],check=True)
+else:
+    subprocess.run(['git','clone','https://github.com/uyh1556/instagram-deepfake-robustness.git',str(PROJECT)],check=True)
+assert (PROJECT/'scripts/diagnose_smoothing_direction_removal.py').is_file(),'새 코드를 GitHub에 push하세요.'
+subprocess.run([sys.executable,'-m','pip','install','-q','setuptools==80.9.0','wheel'],check=True)
+subprocess.run([sys.executable,'-m','pip','install','-q','--no-build-isolation','-r',str(PROJECT/'requirements-ffpp-c23-smoothing-eval.txt')],check=True)
+subprocess.run([sys.executable,'-m','pip','install','-q','opencv-contrib-python-headless==4.11.0.86'],check=True)
+subprocess.run([sys.executable,'-c','import cv2,torch; assert hasattr(cv2,"ximgproc"),"contrib 미설치"; assert torch.cuda.is_available(),"GPU 런타임 선택"; print(cv2.__version__, torch.cuda.get_device_name(0))'],check=True)
+
+ROOT=Path('/content/drive/MyDrive/instagram-deepfake-robustness')
+SOURCE_ROOT=Path('/content/ffpp_c23_native_roi16_v1')
+!python -u "{PROJECT}/scripts/prepare_ffpp_c23_training_data.py" --drive-data "{ROOT}/data/ffpp_c23_4methods_roi16_v1" --data-root "{SOURCE_ROOT}" --trainval-only
+assert _exit_code==0,'FF++ 준비 실패: 위 오류 확인'
+```
+
+## Cell 2 — 진단 (세 백본 한 번에)
+
+```python
+OUTPUT=ROOT/'evaluations/smoothing_direction_removal_v1'
+!python -u "{PROJECT}/scripts/diagnose_smoothing_direction_removal.py" --source-root "{SOURCE_ROOT}" --baseline-runs-root "{ROOT}/runs/ffpp_c23_4methods_baseline_v1" --runs-root "{ROOT}/runs" --calibration "{ROOT}/manifests/beauty_filter_calibration_v1/calibration.json" --output-root "{OUTPUT}" --models xception clip_b16 dinov2_b14 --strategies baseline aug_pair aug_pair_rank --ks 0 1 4 16 --images 1200 --batch-size 64 --workers 2
+assert _exit_code==0,'진단 실패: 위 오류 확인'
+```
+
+## Cell 3 — 결과 표시
+
+```python
+import pandas as pd
+from IPython.display import Markdown,display
+t=pd.read_csv(OUTPUT/'direction_removal.csv')
+filters=['bilateral','weighted_median','fast_global','domain_transform']
+for metric,title in [('fn_gap','FN gap (음수 = 가짜 쪽 쏠림, 양수 = 미탐 방향 역전)'),('fp_gap','FP gap (양수 = 오탐 방향)'),('max_gap','max|gap|'),
+                     ('fake_shift','가짜 점수 이동 (σ, 음수 = 진짜 쪽)'),('normal_auc','원본 AUC (FF++ val)'),('probe_auc','제거 후 스무딩 감지 AUC')]:
+    p=t.pivot_table(index=['model','strategy','variant'],columns='filter',values=metric,sort=False)[filters]
+    display(Markdown(f'### {title}')); display(p.round(3))
+```

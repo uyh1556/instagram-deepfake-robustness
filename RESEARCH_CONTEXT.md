@@ -718,3 +718,6 @@ FF++ val 1,200장, v1 ablation seed42, 원본 vs v1 강(.75). Drive evaluations/
 - CLIP은 진짜 쪽 이동만 절반 정도 줄고(bilateral +4.00→+2.17, DT +2.58→+1.26) 가짜 쪽 차감·역전 없음 → 보정도 불변성도 약함(증강에 거의 반응하지 않음). CDF 결과(절반 해소, 역전 없음)와 일치.
 해석: 덧셈 보정 가설을 Xception에서 정량적으로 지지(감지 정보 유지 + 필터와 무관한 일정 차감), DINO 약하게 지지, CLIP은 별도 문제(증강 학습이 특징 반응을 거의 바꾸지 못함). 한계: 선형 프로브, FF++ val, seed42, raw margin 척도가 모델마다 다름.
 방법 함의: 점수 손실이 아니라 특징 단계에서 흔적을 제거해야 함. 전이 AUC가 높아 공유 방향 제거(후보 3: 사후 투영)로 빠른 인과 확인 가능, 본 방법 후보 1(특징 일관성+rank)/후보 2(특징 판별기 GRL). CLIP은 학습 블록 수(마지막 2개) 한계 가능성 별도 확인.
+
+## 후보 3: 스무딩 방향 제거 진단 구현 (2026-10-23)
+scripts/diagnose_smoothing_direction_removal.py(+테스트, 노트북 diagnose_smoothing_direction_removal). v1 ablation seed42 Baseline/aug_pair/aug_pair_rank × 3백본. FF++ train 1,200장의 (bilateral 강 − 원본) 특징 차이 상위 k(0/1/4/16) SVD 방향을 투영으로 제거, 로지스틱 분류기만 FF++ train 원본으로 재학습(백본 고정; k=0 = 재학습 대조군). FF++ val 1,200장 원본 vs v1 강 4필터로 원본 AUC, fp/fn gap, 점수 이동(σ), 제거 후 감지 AUC. 처음 보는 필터는 방향 추정에 쓰지 않음, CDF·test 미사용. 목적: D1의 상관(흔적 유지 + 일정 차감)을 인과로 확인 — 흔적 방향을 지우면 DT 역전·잔여 쏠림이 줄어드는가. 세 백본을 한 실행에서 돌려 뷰를 한 번만 계산(D1에서 모델마다 뷰를 다시 만든 비효율 수정). GPU 실행 전.
