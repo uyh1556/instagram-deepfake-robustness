@@ -707,3 +707,14 @@ v1(기하 타원 마스크 + bilateral, 피부 변화 약 2/255)은 육안으로
 - 파일럿: bilateral(v2) 행만 aug_single/aug_pair/aug_pair_rank/새 방법 × CLIP·Xception, 대각선과 같은 설정으로 두어 run을 재사용.
 - D1(scripts/diagnose_smoothing_feature_probe.py, 노트북 diagnose_smoothing_feature_probe): v1 ablation 체크포인트, FF++ val 1,200장, 원본 vs v1 스무딩 강(bilateral + held-out 3개)의 분류 직전 특징으로 영상 단위 5겹 선형 프로브(스무딩 감지 AUC), bilateral 프로브의 다른 필터 전이 AUC, 특징 이동량, 점수 이동. 예측: 보정이면 증강 모델의 감지 AUC가 높게 유지되고 DT에서 bilateral 프로브가 켜지며 점수가 진짜 쪽으로 이동. 테스트 미사용, GPU 실행 전.
 - 연구 목표 정리(사용자 질문): "강건한 탐지"의 성능 지표는 스무딩된 상황의 판별력(교차 AUC, 특히 두 방향 중 나쁜 쪽)이고, 원본 CDF AUC 향상은 도메인 적응 문제라 주 목표가 아니다(원본 AUC는 유지 조건).
+
+## D1 특징 프로브 결과: 불변성 없음, Xception은 필터와 무관한 거의 일정한 점수 차감 (2026-10-23)
+FF++ val 1,200장, v1 ablation seed42, 원본 vs v1 강(.75). Drive evaluations/smoothing_feature_probe_v1/<모델>/feature_probe.csv.
+- 감지 AUC(bilateral / DT): Xception Baseline .940/.915 → rank .913/.899; DINO .791/.751 → .760/.730; CLIP .762/.731 → .761/.741. 증강 후에도 거의 그대로(최대 -.03) → 세 백본 모두 "스무딩에 둔감해짐(불변성)"은 아님.
+- bilateral 프로브의 다른 필터 전이 AUC: Xception .86~.88, DINO .71~.75, CLIP .70~.73 → 필터들이 공통 흔적 방향을 공유.
+- 특징 이동량(bilateral): Xception .554→.203, DINO .332→.213, CLIP .364→.271 (줄지만 감지 정보는 남음).
+- 점수 이동(raw margin, 원본 진짜 std 약 4~6). Xception Baseline→rank 차감량(진짜/가짜): bilateral 4.0/5.7, WMF 3.3/5.2, DT 3.4/5.8, FGS 2.4/3.7. 필터마다 원래 이동량이 달라도 차감량이 거의 일정 → DT 가짜 +0.98 → -4.86(약 0.85σ 진짜 쪽, CDF DT 미탐 증가와 일치), bilateral에서도 가짜 -1.31. aug_single/pair도 같은 양상(DT 가짜 -3.1/-4.6).
+- DINO는 같은 양상이 약함(가짜 차감 bilateral 1.11 ≈ DT 1.13 → DT 가짜 -0.62; FGS 진짜 +1.57 남음 = 덜 보정).
+- CLIP은 진짜 쪽 이동만 절반 정도 줄고(bilateral +4.00→+2.17, DT +2.58→+1.26) 가짜 쪽 차감·역전 없음 → 보정도 불변성도 약함(증강에 거의 반응하지 않음). CDF 결과(절반 해소, 역전 없음)와 일치.
+해석: 덧셈 보정 가설을 Xception에서 정량적으로 지지(감지 정보 유지 + 필터와 무관한 일정 차감), DINO 약하게 지지, CLIP은 별도 문제(증강 학습이 특징 반응을 거의 바꾸지 못함). 한계: 선형 프로브, FF++ val, seed42, raw margin 척도가 모델마다 다름.
+방법 함의: 점수 손실이 아니라 특징 단계에서 흔적을 제거해야 함. 전이 AUC가 높아 공유 방향 제거(후보 3: 사후 투영)로 빠른 인과 확인 가능, 본 방법 후보 1(특징 일관성+rank)/후보 2(특징 판별기 GRL). CLIP은 학습 블록 수(마지막 2개) 한계 가능성 별도 확인.
