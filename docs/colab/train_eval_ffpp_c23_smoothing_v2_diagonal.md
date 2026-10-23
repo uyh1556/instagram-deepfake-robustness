@@ -133,3 +133,19 @@ for seed in SEEDS:
         display(Markdown(f'### {GROUP} seed{seed} {d}')); display(pd.DataFrame(rows).set_index('조건'))
 print('Results:',EVAL)
 ```
+
+## Cell 7 — 보정인가 불변인가 (강도 곡선 + 흔적 프로브, 학습 필터만)
+
+- 강도 곡선: Cell 5에서 저장된 예측만 읽는다(추론 없음). 보정이면 **약** 스무딩에서 점수가 진짜 쪽(−)으로 넘어가고, 불변이면 약·중·강 모두 0 근처.
+- 흔적 프로브: FF++ val 1,200장(CDF 미사용)의 원본 vs 학습 필터 강 스무딩 특징으로 "스무딩됐나" 감지 AUC. 0.5에 가까울수록 흔적이 지워짐. GPU, 백본당 약 10~15분.
+
+```python
+!git -C "{PROJECT}" pull --ff-only
+for seed in SEEDS:
+    for d in EVAL_DATASETS:
+        !python -u "{PROJECT}/scripts/diagnose_v2_compensation.py" curve --eval-root "{EVAL}/seed{seed}/{d}"
+        assert _exit_code==0,'강도 곡선 실패'
+    for f in TRAIN_FILTERS:
+        !python -u "{PROJECT}/scripts/diagnose_v2_compensation.py" probe --source-root "{FF_ROOT}" --baseline-runs-root "{ROOT}/runs/ffpp_c23_4methods_baseline_v1" --runs-root "{RUNS}" --archive-dir "{ARCHIVE}" --output-root "{EVAL}/trace_probe" --train-filter {f} --models {GROUP} --strategies {' '.join(STRATEGIES)} --fc-weights {' '.join(map(str,FC_WEIGHTS))} --seed {seed} --images 1200 --batch-size 64 --workers 2
+        assert _exit_code==0,'흔적 프로브 실패'
+```

@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'scripts'))
 import beauty_smoothing_v2 as v2
 import build_beauty_smoothing_v2_cache as builder
 import evaluate_beauty_smoothing_v2 as evaluation
+import diagnose_v2_compensation as compensation
 import ffpp_c23_smoothing_v2_diagonal as diagonal
 import test_beauty_smoothing_v2 as v2_fixture
 import test_smoothing_rank_sda_pool_v2 as fixture
@@ -100,6 +101,23 @@ class DiagonalTests(unittest.TestCase):
         self.assertEqual(set(trained[trained['filter'].eq('bilateral')].held_out), {False})
         self.assertEqual(set(trained[trained['filter'].ne('bilateral')].held_out), {True})
         self.assertFalse(table[table.method.eq('baseline')].held_out.any())
+
+        # Strength curve from the saved predictions only (no model is built).
+        with patch.object(evaluation.base, 'build_model', side_effect=AssertionError('inference')):
+            c = compensation.curve(argparse.Namespace(eval_root=e.output_root))
+        self.assertEqual(len(c), len(table))
+        self.assertEqual({k for k in c if k.startswith(('real_', 'fake_'))},
+                         {f'{s}_{l}' for s in ['real', 'fake'] for l in ['weak', 'medium', 'strong']})
+        strong = table.set_index(['strategy', 'filter']).real_shift
+        self.assertTrue(np.allclose(c.set_index(['strategy', 'filter']).real_strong.reindex(strong.index), strong))
+        # Trace probe on FF++ val with the train-filter cache.
+        with patch.object(v2, 'full', side_effect=v2_fixture.fake_full):
+            pr = compensation.probe(argparse.Namespace(source_root=self.args.source_root, baseline_runs_root=self.args.baseline_runs_root,
+                runs_root=t.runs_root, archive_dir=self.root/'drive', cache_root=self.root/'cache_probe', output_root=self.root/'probe',
+                train_filter='bilateral', models=['dinov2_b14'], strategies=['aug_pair_rank', 'aug_pair_rank_fc'], fc_weights=[1.],
+                seed=42, baseline_seed=42, images=16, folds=2, batch_size=4, workers=0, device='cpu'))
+        self.assertEqual(list(pr.strategy), ['baseline', 'aug_pair_rank@bilateral', 'aug_pair_rank_fc1@bilateral'])
+        self.assertTrue(pr.probe_auc.between(0, 1).all() and (pr.feature_shift >= 0).all())
 
 
 if __name__ == '__main__':
