@@ -13,8 +13,12 @@ Cell 2의 `MODELS`에 모델 **하나**를 넣는다. 모델마다 이 노트북
 - 네 조건 모두 같은 FF++ baseline에서 독립 시작하고, epoch 표본·배치 순서·학습 범위·optimizer가 같다. **손실만 다르다.**
 - 선택: FF++ val 1,200장 × 4조건 pooled AUC 최고 epoch, 최대 10 epoch, patience 3. **CDF 이미지는 학습·선택에 쓰지 않는다.**
 - 평가: CDF **공식 test** 8,288장 × 원본/약/중/강.
-  - **주 지표 = 스무딩 격차** = 원본 AUC − (강 스무딩 진짜 vs 원본 가짜) AUC. 도메인 차이는 양쪽에 같이 들어가 빠진다.
-  - 보조: 쏠림(skew), 진짜 뒤집힘률, 진짜 점수 이동. 판별력 확인용으로 원본 AUC를 함께 본다.
+  - **주 지표 = 양방향 스무딩 격차** (도메인 차이는 양쪽에 같이 들어가 빠진다)
+    - 진짜 쪽(오탐 방향, `smoothing_gap`) = 원본 AUC − (강 스무딩 진짜 vs 원본 가짜) AUC
+    - 가짜 쪽(미탐 방향, `fake_side_gap`) = 원본 AUC − (원본 진짜 vs 강 스무딩 가짜) AUC
+    - 불변이려면 **둘 다 0 근처**여야 한다. 한쪽만 작으면 쏠림을 반대로 옮긴 것이다.
+  - 보조: 쏠림(skew), 진짜·가짜 뒤집힘률, 진짜·가짜 점수 이동. 판별력 확인용으로 원본 AUC를 함께 본다.
+  - Cell 6을 다시 실행하면 저장된 예측을 재사용해 가짜 쪽 지표까지 다시 계산한다(추론 없음).
   - 영상 단위 부트스트랩: 각 조건의 스무딩 격차 − `aug_pair_rank`의 스무딩 격차.
 - **사전에 정한 판정:** 세 백본 모두에서 `aug_pair_rank`의 스무딩 격차가 `aug_single`·`aug_pair`보다 작고, 원본 AUC가 0.01 넘게 떨어지지 않으면 순위 손실의 기여가 있다고 본다.
 
@@ -140,15 +144,16 @@ from IPython.display import Markdown,display
 names={'baseline':'Baseline','clean_only':'① 원본만','aug_single':'② 스무딩 증강(한 장)','aug_pair':'③ 스무딩 증강(짝 두 장)','aug_pair_rank':'④ 스무딩 증강(짝) + 순위 손실'}
 read=lambda f: list(csv.DictReader((EVALUATION_ROOT/f).open()))
 rows,boot=read('summary.csv'),read('bootstrap_smoothing_gap_vs_aug_pair_rank.csv')
-lines=[f'### {GROUP} — 스무딩 시프트 지표 (CDF 공식 test)','','|조건|선택 epoch|원본 AUC|스무딩 격차 ↓|쏠림 ↓|진짜 뒤집힘 ↓|진짜 점수 이동 ↓|같은 조건 AUC|','|---|---:|---:|---:|---:|---:|---:|---:|']
+lines=[f'### {GROUP} — 스무딩 시프트 지표 (CDF 공식 test)','','|조건|선택 epoch|원본 AUC|진짜 쪽 격차 ↓|가짜 쪽 격차|쏠림|진짜 뒤집힘 ↓|가짜 뒤집힘 ↓|진짜 이동|가짜 이동|','|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|']
 for r in rows:
-    lines.append(f"|{names[r['strategy']]}|{r['selected_epoch']}|{float(r['normal_auc']):.4f}|{float(r['smoothing_gap']):.4f}|{float(r['skew']):.4f}|{float(r['flip_real@normal5']):.2%}|{float(r['real_shift']):.2f}σ|{float(r['matched_auc']):.4f}|")
+    lines.append(f"|{names[r['strategy']]}|{r['selected_epoch']}|{float(r['normal_auc']):.4f}|{float(r['smoothing_gap']):.4f}|{float(r['fake_side_gap']):.4f}|{float(r['skew']):.4f}|{float(r['flip_real@normal5']):.2%}|{float(r['flip_fake@normal5']):.2%}|{float(r['real_shift']):+.2f}σ|{float(r['fake_shift']):+.2f}σ|")
 display(Markdown('\n'.join(lines)))
-lines=['### 스무딩 격차 차이 (조건 − ④), 영상 단위 부트스트랩 95% 구간','','|조건|차이|95% 구간|','|---|---:|---|']
+side={'smoothing_gap':'진짜 쪽','fake_side_gap':'가짜 쪽'}
+lines=['### 격차 차이 (조건 − ④), 영상 단위 부트스트랩 95% 구간','','|조건|방향|차이|95% 구간|','|---|---|---:|---|']
 for r in boot:
-    lines.append(f"|{names[r['strategy']]}|{float(r['observed']):+.4f}|[{float(r['ci_low']):+.4f}, {float(r['ci_high']):+.4f}]|")
+    lines.append(f"|{names[r['strategy']]}|{side[r['metric']]}|{float(r['observed']):+.4f}|[{float(r['ci_low']):+.4f}, {float(r['ci_high']):+.4f}]|")
 display(Markdown('\n'.join(lines)))
-print('차이가 양수이고 구간이 0보다 크면 ④가 그 조건보다 스무딩 격차가 작다는 뜻입니다.')
-print('진짜 뒤집힘은 원본 진짜 FPR 5% 임계값(test 라벨 기준 진단용)에서 계산합니다.')
+print('차이가 양수이고 구간이 0보다 크면 ④가 그 조건보다 그 방향 격차가 작다는 뜻입니다. 불변이려면 두 방향 격차가 모두 0 근처여야 합니다.')
+print('뒤집힘은 원본 진짜 FPR 5% 임계값(test 라벨 기준 진단용)에서 계산합니다. 이동은 원본 진짜 점수 표준편차 단위입니다.')
 print('Results:',EVALUATION_ROOT)
 ```

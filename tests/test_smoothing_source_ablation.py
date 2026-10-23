@@ -93,6 +93,8 @@ class SourceAblationTests(unittest.TestCase):
         self.assertTrue((table.smoothing_gap == table.normal_auc-table.strong_real_vs_normal_fake).all())
         boot = pd.read_csv(a.output_root/'bootstrap_smoothing_gap_vs_aug_pair_rank.csv')
         self.assertEqual(set(boot.strategy), {'baseline', 'aug_single'})
+        self.assertEqual(set(boot.metric), {'smoothing_gap', 'fake_side_gap'})
+        self.assertTrue((table.fake_side_gap == table.normal_auc-table.normal_real_vs_strong_fake).all())
         times = {p.name: p.stat().st_mtime_ns for p in a.output_root.glob('*_normal.csv')}
         ablation.evaluate(a)
         self.assertEqual(times, {p.name: p.stat().st_mtime_ns for p in a.output_root.glob('*_normal.csv')})

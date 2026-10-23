@@ -198,15 +198,18 @@ def train(args):
         del initial
 
 
-def smoothing_gap(labels, normal, strong, rows=None):
+def smoothing_gap(labels, normal, strong, rows=None, side='real'):
+    """Clean AUC minus the cross AUC with the `side` class strongly smoothed (real: false-positive
+    direction, beautified real vs clean fake; fake: miss direction, clean real vs beautified fake)."""
     if rows is not None:
         labels, normal, strong = labels[rows], normal[rows], strong[rows]
     real, fake = labels == 0, labels == 1
-    cross = pool.fast_auc(np.r_[np.zeros(real.sum()), np.ones(fake.sum())], np.r_[strong[real], normal[fake]])
+    scores = np.r_[strong[real], normal[fake]] if side == 'real' else np.r_[normal[real], strong[fake]]
+    cross = pool.fast_auc(np.r_[np.zeros(real.sum()), np.ones(fake.sum())], scores)
     return pool.fast_auc(labels, normal)-cross
 
 
-def gap_bootstrap(frame, margins_a, margins_b, repeats, seed):
+def gap_bootstrap(frame, margins_a, margins_b, repeats, seed, side='real'):
     """Video-cluster bootstrap of gap(a) - gap(b); frames of one video stay together."""
     y = frame.class_index.astype(int).to_numpy()
     index = {}
@@ -217,9 +220,24 @@ def gap_bootstrap(frame, margins_a, margins_b, repeats, seed):
     out = []
     for _ in range(repeats):
         rows = np.concatenate([p[j] for p in pools for j in rng.integers(0, len(p), len(p))])
-        out.append(smoothing_gap(y, margins_a['normal'], margins_a['smooth_strong'], rows)
-                   - smoothing_gap(y, margins_b['normal'], margins_b['smooth_strong'], rows))
+        out.append(smoothing_gap(y, margins_a['normal'], margins_a['smooth_strong'], rows, side)
+                   - smoothing_gap(y, margins_b['normal'], margins_b['smooth_strong'], rows, side))
     return np.array(out)
+
+
+def bootstrap_rows(frame, labels, banks, reference, args, extra):
+    """Both gap directions of every other condition minus the reference, video-cluster bootstrap."""
+    out = []
+    for label in banks:
+        if label == reference:
+            continue
+        for side, metric in [('real', 'smoothing_gap'), ('fake', 'fake_side_gap')]:
+            diff = gap_bootstrap(frame, banks[label], banks[reference], args.bootstrap, args.seed, side)
+            observed = (smoothing_gap(labels, banks[label]['normal'], banks[label]['smooth_strong'], side=side)
+                        - smoothing_gap(labels, banks[reference]['normal'], banks[reference]['smooth_strong'], side=side))
+            out.append(dict(**extra, strategy=label, reference=reference, metric=metric, observed=observed,
+                            ci_low=float(np.quantile(diff, .025)), ci_high=float(np.quantile(diff, .975)), repeats=args.bootstrap))
+    return out
 
 
 def evaluate(args):
@@ -271,27 +289,22 @@ def evaluate(args):
             grid = [[pool.fast_auc(np.r_[np.zeros((labels == 0).sum()), np.ones((labels == 1).sum())],
                                    np.r_[margins[r][labels == 0], margins[f][labels == 1]]) for f in CONDITIONS] for r in CONDITIONS]
             rows.append(dict(model=name, strategy=label, selected_epoch=epoch, matched_auc=float(np.mean(np.diag(grid))),
-                             smoothing_gap=measured['normal_auc']-measured['strong_real_vs_normal_fake'], **measured))
+                             smoothing_gap=measured['real_side_gap'], **measured))
             print(f"{name} {label}: clean AUC={measured['normal_auc']:.4f} gap={rows[-1]['smoothing_gap']:.4f} "
                   f"skew={measured['skew']:.4f} flip={measured['flip_real@normal5']:.2%}", flush=True)
             del model
             if args.device == 'cuda':
                 torch.cuda.empty_cache()
         if 'aug_pair_rank' in banks and args.bootstrap:
-            for label in banks:
-                if label != 'aug_pair_rank':
-                    diff = gap_bootstrap(frame, banks[label], banks['aug_pair_rank'], args.bootstrap, args.seed)
-                    observed = (smoothing_gap(labels, banks[label]['normal'], banks[label]['smooth_strong'])
-                                - smoothing_gap(labels, banks['aug_pair_rank']['normal'], banks['aug_pair_rank']['smooth_strong']))
-                    boots.append(dict(model=name, strategy=label, reference='aug_pair_rank', metric='smoothing_gap', observed=observed,
-                                      ci_low=float(np.quantile(diff, .025)), ci_high=float(np.quantile(diff, .975)), repeats=args.bootstrap))
+            boots += bootstrap_rows(frame, labels, banks, 'aug_pair_rank', args, dict(model=name))
     table = pd.DataFrame(rows)
     table.to_csv(args.output_root/'summary.csv', index=False)
     pd.DataFrame(boots).to_csv(args.output_root/'bootstrap_smoothing_gap_vs_aug_pair_rank.csv', index=False)
     base.common.json_write(args.output_root/'comparison_protocol.json', dict(protocol=PROTOCOL, strategies=args.strategies,
-        primary='smoothing_gap = clean AUC - AUC(strong real vs clean fake) on CDF official test', selection='FF++ val pooled AUC',
+        primary='smoothing_gap (= real_side_gap) = clean AUC - AUC(strong real vs clean fake); fake_side_gap = clean AUC - AUC(clean real vs strong fake)', selection='FF++ val pooled AUC',
         test_used_for_selection=False, normal5_threshold='test-real-label oracle diagnostic only'))
-    columns = ['model', 'strategy', 'selected_epoch', 'normal_auc', 'smoothing_gap', 'skew', 'flip_real@normal5', 'real_shift', 'matched_auc']
+    columns = ['model', 'strategy', 'selected_epoch', 'normal_auc', 'smoothing_gap', 'fake_side_gap', 'skew', 'flip_real@normal5',
+               'flip_fake@normal5', 'real_shift', 'fake_shift', 'matched_auc']
     with pd.option_context('display.width', 250, 'display.max_columns', 20):
         print(table[columns].round(4).to_string(index=False))
         if boots:

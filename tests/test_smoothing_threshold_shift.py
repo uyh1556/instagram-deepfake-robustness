@@ -41,6 +41,12 @@ class ThresholdShiftTests(unittest.TestCase):
         self.assertGreater(pushed['flip_real@normal5'], .25)
         self.assertAlmostEqual(pushed['real_shift']/pushed['fake_shift'], 3, places=6)
         self.assertLess(pushed['strong_real_vs_normal_fake'], pushed['normal_auc'])
+        # Fakes are pushed toward "fake" too, so the miss direction gets easier, not harder.
+        self.assertAlmostEqual(pushed['fake_side_gap'], pushed['normal_auc']-pushed['normal_real_vs_strong_fake'])
+        self.assertLess(pushed['fake_side_gap'], 0)
+        self.assertEqual(pushed['flip_fake@normal5'], 0)
+        self.assertAlmostEqual(still['real_side_gap'], 0)
+        self.assertAlmostEqual(still['fake_side_gap'], 0)
 
     def test_mismatched_images_are_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
