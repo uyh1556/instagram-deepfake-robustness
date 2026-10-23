@@ -673,3 +673,10 @@ scripts/beauty_smoothing_filters.py, calibrate_beauty_filters.py(+테스트, CPU
 보정값: weighted median 반경=ROI 한 변의 1.607%(변화 2.04), fast global 범위=0.511%(2.05, 고주파 감소 .45로 성격이 가장 다름), domain transform 색 시그마 47.1(공간 .02, 2.05). 학습 bilateral 자체가 FF++ 피부를 평균 ~2/255만 바꾸는 육안 거의 불가 수준의 약한 보정임을 기록.
 지표 이름 정리(2026-10-23): 스무딩 격차는 양방향으로 보고한다. fp_gap = 원본AUC − AUC(강 스무딩 진짜 vs 원본 가짜)(보정된 진짜, 오탐 방향; 이전 smoothing_gap), fn_gap = 원본AUC − AUC(원본 진짜 vs 강 스무딩 가짜)(보정된 가짜, 미탐 방향). 교차 AUC는 fp_cross_auc/fn_cross_auc, 짝 뒤집힘은 fp_flip/fn_flip@normal5. 불변이려면 두 격차가 모두 0 근처여야 하며, 한쪽만 작으면 쏠림을 반대로 옮긴 것이다. 부트스트랩 파일은 bootstrap_gaps_vs_aug_pair_rank.csv.
 source ablation 코드의 평가 부분만 바뀌어도 파일 해시가 학습 config에 들어가 완료된 run이 불일치로 막히던 문제를 고쳤다: 완료된 run은 이 파일 해시만 다를 때 건너뛴다(학습 중인 run 재개는 그대로 엄격).
+FP/FN 두 방향 ablation 결과(2026-10-23, 저장 예측 재사용, CDF 공식 test bilateral, seed42) — fp_gap / fn_gap (max|·|):
+Xception Baseline .201/-.181(.201), clean .223/-.191(.223), single .013/-.023(.023), pair -.003/-.005(.005), rank -.011/+.005(.011).
+DINO Baseline .119/-.091(.119), clean .092/-.070(.092), single .044/-.039(.044), pair .023/-.004(.023), rank .007/+.002(.007).
+CLIP Baseline .116/-.089(.116), clean .116/-.086(.116), single .082/-.076(.082), pair .087/-.075(.087), rank .084/-.070(.084).
+부트스트랩(조건−rank, fn_gap): Xception pair -.011[-.011,-.010], DINO pair -.006[-.008,-.004], CLIP single -.006[-.009,-.003], pair -.006[-.007,-.004].
+해석: rank가 쏠림을 반대로 옮긴 경우는 없다(fn_gap ≤ +.005, fn_flip ≤5.3%). Baseline은 두 방향이 반대 부호(보정이 진짜·가짜 모두를 가짜 쪽으로 민다). DINO는 rank가 두 방향 모두 가장 0에 가깝다. Xception은 pair·rank 모두 사실상 불변이며 rank는 약한 과보정(fp -.011)으로 max 기준 pair가 근소하게 앞선다(.005 vs .011). CLIP은 세 증강 방법 모두 절반 정도만 줄였고(max .082~.087) rank의 장점은 원본AUC(.813)·fp_cross_auc(.729). 결론 표현: 순위 손실은 증강과 같거나 더 불변에 가깝고 판별력은 같거나 더 잘 지킨다(모든 백본에서 증강보다 확실히 낫다는 아님). 판정은 max(|fp_gap|,|fn_gap|)와 두 격차를 함께 보고, seed43/44로 pair vs rank 차이 확인 예정.
+Colab 메모: Drive에 저장된 노트북 사본은 git pull로 갱신되지 않아 마지막 셀이 옛 열 이름을 찾는다. 최신 노트북은 Colab에서 GitHub로 다시 연다.
