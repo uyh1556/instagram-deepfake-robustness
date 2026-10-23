@@ -46,6 +46,7 @@ TRAIN_FILTERS=['bilateral']            # 본 실험: ['bilateral','weighted_medi
 STRATEGIES=['aug_pair_rank','aug_pair_rank_fc']   # 본 실험: ['aug_single','aug_pair','aug_pair_rank','aug_pair_rank_fc']
 FC_WEIGHTS=[1,10,100]                  # 일관성 λ 후보 (본 실험: 고른 λ 하나)
 FC_RAMP=0                              # λ 워밍업 epoch 수(처음 FC_RAMP epoch 동안 0→λ). 0이면 없음. 워밍업 run 이름: aug_pair_rank_fc<λ>_ramp<R>
+REPLACE_RUNS=[]                        # 설정이 바뀐 '완료' run을 같은 이름으로 다시 학습할 때만 라벨을 넣음(기존 폴더는 *_replaced_<시각>으로 보존)
 SEEDS=[42]                             # 본 실험: [42,43,44]
 EVAL_DATASETS=['cdf_dev']              # 공식 test 'cdf_test'는 방법 확정 후에만 추가
 assert len(MODELS)==1,'동시 실행 시 노트북마다 모델 하나'
@@ -100,7 +101,7 @@ if 'cdf_dev' in EVAL_DATASETS:
 ```python
 for seed in SEEDS:
     for f in TRAIN_FILTERS:
-        !python -u "{PROJECT}/scripts/ffpp_c23_smoothing_v2_diagonal.py" --source-root "{FF_ROOT}" --baseline-runs-root "{ROOT}/runs/ffpp_c23_4methods_baseline_v1" --runs-root "{RUNS}" --manifest-root "{MANIFESTS}" --archive-dir "{ARCHIVE}" --train-filter {f} --models {GROUP} --strategies {' '.join(STRATEGIES)} --fc-weights {' '.join(map(str,FC_WEIGHTS))} --fc-ramp-epochs {FC_RAMP} --seed {seed} --epochs 10 --patience 3 --source-images 6000 --val-images 1200 --batch-size 16 --workers 2
+        !python -u "{PROJECT}/scripts/ffpp_c23_smoothing_v2_diagonal.py" --source-root "{FF_ROOT}" --baseline-runs-root "{ROOT}/runs/ffpp_c23_4methods_baseline_v1" --runs-root "{RUNS}" --manifest-root "{MANIFESTS}" --archive-dir "{ARCHIVE}" --train-filter {f} --models {GROUP} --strategies {' '.join(STRATEGIES)} --fc-weights {' '.join(map(str,FC_WEIGHTS))} --fc-ramp-epochs {FC_RAMP} {('--replace-runs '+' '.join(REPLACE_RUNS)) if REPLACE_RUNS else ''} --seed {seed} --epochs 10 --patience 3 --source-images 6000 --val-images 1200 --batch-size 16 --workers 2
         assert _exit_code==0,f'학습 실패 (seed {seed}, {f}): 위 오류 확인 후 다시 실행'
 ```
 

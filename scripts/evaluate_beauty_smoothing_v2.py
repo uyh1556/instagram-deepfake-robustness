@@ -84,10 +84,12 @@ def predict(args, frame, name, label, weights, checkpoint_hash, cache, filt, con
     pred = args.output_root/(f'{name}_{label}_normal.csv' if filt is None else f'{name}_{label}_{filt}_{condition}.csv')
     if pred.is_file():
         saved = pd.read_csv(pred, dtype={'crop_path': str})
-        if saved.crop_path.tolist() != frame.crop_path.tolist() or saved.checkpoint_sha256.iloc[0] != checkpoint_hash:
+        if saved.crop_path.tolist() != frame.crop_path.tolist():
             raise ValueError(f'Saved predictions differ: {pred}')
-        print('Reuse:', pred.name, flush=True)
-        return saved.raw_margin.to_numpy()
+        if saved.checkpoint_sha256.iloc[0] == checkpoint_hash:
+            print('Reuse:', pred.name, flush=True)
+            return saved.raw_margin.to_numpy()
+        print('Stale (checkpoint was retrained), recomputing:', pred.name, flush=True)
     if state.get('model') is None:
         model, transform = base.build_model(name, pretrained=False)
         model.load_state_dict(weights, strict=True)

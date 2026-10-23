@@ -12,7 +12,8 @@ the smoothing changes to v2 (face-parsing skin mask + one edge-preserving filter
                     the original ones so the trace itself disappears, while the original features stay the anchor.
                     One run per --fc-weights value (lambda), named aug_pair_rank_fc<lambda>, so the pilot can compare lambdas.
                     --fc-ramp-epochs R > 0 raises lambda linearly from 0 over the first R epochs (per step) so the full network
-                    (Xception) is not shocked at epoch 1; such runs are named aug_pair_rank_fc<lambda>_ramp<R>.
+                    (Xception) is not shocked at epoch 1; such runs are named aug_pair_rank_fc<lambda>_ramp<R>. The warm-up
+                    epochs do not count toward the early-stopping patience (validation dips while lambda is still rising).
 Selection (best.pt): FF++ val (1,200 frames) pooled raw-margin AUC over original + filter-k weak/medium/strong; no
 Celeb-DF frame is used for training or selection. Evaluation lives in evaluate_beauty_smoothing_v2.py.
 """
@@ -20,6 +21,7 @@ import argparse
 import json
 import random
 import subprocess
+import time
 from pathlib import Path
 
 import numpy as np
@@ -144,8 +146,9 @@ def source_loss(strategy, name, model, clean, smooth, labels, detected, args, se
 def configuration(args, name, strategy, data, cache_identity, initial, initial_hash):
     weights = dict(ranking_weight=args.ranking_weight if strategy in ('aug_pair_rank', 'aug_pair_rank_fc') else 0.,
                    fc_weight=args.fc_weight if strategy == 'aug_pair_rank_fc' else 0.)
-    if strategy == 'aug_pair_rank_fc' and args.fc_ramp_epochs > 0:      # key absent otherwise: earlier runs stay reusable
+    if strategy == 'aug_pair_rank_fc' and args.fc_ramp_epochs > 0:      # keys absent otherwise: earlier runs stay reusable
         weights['fc_ramp_epochs'] = args.fc_ramp_epochs
+        weights['patience_rule'] = 'warm-up epochs do not count toward patience'
     return dict(protocol=PROTOCOL, model=name, train_filter=args.train_filter, strategy=strategy, seed=args.seed,
         baseline_seed=args.baseline_seed, data=data,
         smoothing=dict(cache_identity, levels=v2.LEVELS), initial_checkpoint_sha256=initial_hash,
@@ -189,6 +192,11 @@ def train(args):
             config = configuration(args, name, strategy, data, cache_identity, initial, initial_hash)
             identity = evaluation.key(config)
             run = args.runs_root/run_name(name, args.train_filter, label, args.seed)
+            if label in args.replace_runs and (run/'config.json').is_file() and json.loads((run/'config.json').read_text()) != config:
+                # Explicitly requested: keep the old run beside it (never deleted) and train this label afresh.
+                moved = run.with_name(f'{run.name}_replaced_{time.strftime("%Y%m%dT%H%M%S")}')
+                run.rename(moved)
+                print('=== REPLACED', label, '-> old run kept at', moved.name, '===', flush=True)
             run.mkdir(parents=True, exist_ok=True)
             if (run/'completed.json').is_file() and (run/'config.json').is_file():
                 saved = json.loads((run/'config.json').read_text())
@@ -266,9 +274,10 @@ def train(args):
                 improved = pool.is_better(values, best)
                 if improved:
                     best = pool.best_of(values)
+                warming = strategy == 'aug_pair_rank_fc' and epoch+1 <= args.fc_ramp_epochs
                 if values['pooled_auc'] > anchor+.0001:
                     anchor, stale = values['pooled_auc'], 0
-                else:
+                elif not warming:
                     stale += 1
                 history.append(dict(epoch=epoch+1, loss=float(totals[0]/seen), source_ce=float(totals[1]/seen),
                     source_rank=float(totals[2]/seen), feature_consistency=float(totals[3]/seen),
@@ -320,6 +329,7 @@ def parse_args(argv=None):
         p.add_argument('--'+field, type=float, default=default)
     p.add_argument('--fc-weights', nargs='+', type=float, default=[1.], help='lambda(s) of the feature-consistency term')
     p.add_argument('--fc-ramp-epochs', type=float, default=0., help='linear lambda warm-up length in epochs (0 = none)')
+    p.add_argument('--replace-runs', nargs='*', default=[], help='run labels to retrain when their settings changed (old run kept as *_replaced_<time>)')
     p.add_argument('--device', choices=['cuda', 'cpu'], default='cuda')
     a = p.parse_args(argv)
     if (min(a.epochs, a.patience, a.source_images, a.val_images, a.batch_size) < 1 or a.batch_size % 2 or a.source_images % 8

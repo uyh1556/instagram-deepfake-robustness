@@ -46,7 +46,7 @@ class DiagonalTests(unittest.TestCase):
                       cache_root=self.root/'cache_train', train_filter='bilateral', models=['dinov2_b14'],
                       strategies=list(diagonal.STRATEGIES), seed=42, baseline_seed=42, epochs=2, patience=3, source_images=16,
                       val_images=16, batch_size=4, workers=0, encoder_lr=1e-4, head_lr=1e-4, weight_decay=1e-4,
-                      ranking_weight=.25, fc_weights=[1.], fc_ramp_epochs=0., device='cpu')
+                      ranking_weight=.25, fc_weights=[1.], fc_ramp_epochs=0., replace_runs=[], device='cpu')
         return argparse.Namespace(**{**values, **extra})
 
     def build_caches(self):
@@ -88,6 +88,22 @@ class DiagonalTests(unittest.TestCase):
             self.assertEqual((ramp_cfg['fc_weight'], ramp_cfg['fc_ramp_epochs']), (100., 2.))
             self.assertNotIn('fc_ramp_epochs', json.loads((runs['aug_pair_rank_fc1']/'config.json').read_text()))
             self.assertEqual([diagonal.ramp_scale(e, s, 4, 2.) for e, s in [(0, 0), (0, 2), (1, 0), (2, 0)]], [0., .25, .5, 1.])
+            # Warm-up epochs do not consume patience: with patience 1 and ramp 2 the run still trains past epoch 2.
+            pr = self.train_args(runs_root=self.root/'patience_runs', strategies=['aug_pair_rank_fc'], fc_weights=[100.],
+                                 fc_ramp_epochs=2., epochs=3, patience=1)
+            with patch.object(diagonal.pool, 'is_better', return_value=False):
+                diagonal.train(pr)
+            hist = json.loads((pr.runs_root/diagonal.run_name('dinov2_b14', 'bilateral', 'aug_pair_rank_fc100_ramp2', 42)/'history.json').read_text())
+            self.assertGreaterEqual(len(hist), 2)
+            # Replacing a finished run whose settings changed keeps the old folder and retrains the same label.
+            old = r.runs_root/diagonal.run_name('dinov2_b14', 'bilateral', 'aug_pair_rank_fc100_ramp2', 42)
+            cfg = json.loads((old/'config.json').read_text()); cfg.pop('patience_rule'); (old/'config.json').write_text(json.dumps(cfg))
+            with self.assertRaises(ValueError):
+                diagonal.train(r)
+            diagonal.train(self.train_args(strategies=['aug_pair_rank_fc'], fc_weights=[100.], fc_ramp_epochs=2.,
+                                           replace_runs=['aug_pair_rank_fc100_ramp2']))
+            self.assertEqual(len(list(r.runs_root.glob('*_fc100_ramp2_*_replaced_*'))), 1)
+            self.assertIn('patience_rule', json.loads((old/'config.json').read_text()))
             # fc_weight=0 reproduces aug_pair_rank exactly: the consistency term is the only difference.
             z = self.train_args(runs_root=self.root/'zero_runs', fc_weights=[0., 10.], strategies=['aug_pair_rank', 'aug_pair_rank_fc'])
             diagonal.train(z)

@@ -757,3 +757,4 @@ cdf_dev, bilateral 학습, seed42. 원본 AUC: Baseline .787, rank .744, fc1 .72
 - 흔적 프로브(FF++ val) 감지 AUC: Baseline .975, rank .941, fc1 .809, fc10 .760 → 흔적은 줄었지만 0.5와 거리가 멀고, 줄어든 만큼 과보정이 줄지 않음.
 해석: 코사인 일관성(1-cos)은 큰 성분이 지배하는 각도만 묶어서(값이 0.006 수준), 분류기가 증폭할 수 있는 작은 크기의 흔적 방향은 남김 → 선형 프로브로 여전히 구분 가능. CLIP(마지막 2블록만 학습)에서는 통했지만 Xception(전체 학습)에서는 불충분. 다음 후보: λ 워밍업(초기 충격 방지)으로 λ=100 재시도, 또는 흔적을 직접 겨냥하는 후보 2(특징 스무딩 판별기 적대 학습)/표준화 특징 공간의 일관성.
 λ 워밍업 추가(사용자 결정): --fc-ramp-epochs R이면 처음 R epoch 동안 λ를 스텝마다 0→λ로 선형 증가, run 이름 aug_pair_rank_fc<λ>_ramp<R>, config에 fc_ramp_epochs(워밍업 없는 기존 run의 config는 그대로라 재사용 유지). Xception만 λ=100·R=2로 빠르게 재확인(CLIP 재실행 안 함).
+Xception λ=100 워밍업 2 결과: epoch1 FF++ val pooled .966(epoch0)→.724, epoch2 .916, epoch3 .935로 회복 중 patience 3에 걸려 다시 epoch0 선택. 사용자 결정으로 워밍업 epoch은 patience에 세지 않도록 변경(config patience_rule), 같은 이름 run을 --replace-runs로 재학습(기존 폴더는 *_replaced_<시각>으로 보존). 평가는 체크포인트가 바뀐 예측을 재계산.
