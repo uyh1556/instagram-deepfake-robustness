@@ -36,7 +36,7 @@ subprocess.run([sys.executable,'-c','import torch; assert torch.cuda.is_availabl
 print('CPU cores:',os.cpu_count(),'| local free GB:',shutil.disk_usage('/content').free//2**30)
 ```
 
-## Cell 2 — 설정·경로·중복 폴더 검사
+## Cell 2 — 설정·경로
 
 ```python
 MODELS=['clip_b16']                    # 노트북마다 하나: ['xception'] / ['clip_b16'] / ['dinov2_b14']
@@ -65,15 +65,8 @@ for d in ['ffpp_trainval',*EVAL_DATASETS]:
 assert 'cdf_dev' not in EVAL_DATASETS or MEMBERSHIP is not None,'pool v2 membership_labelled.csv를 찾지 못했습니다'
 print('Model:',GROUP,'| filters:',TRAIN_FILTERS,'| seeds:',SEEDS,'| eval:',EVAL_DATASETS,flush=True)
 
-try:
-    import googleapiclient.discovery
-except ImportError:
-    subprocess.run([sys.executable,'-m','pip','install','-q','google-api-python-client','google-auth'],check=True)
-from google.colab import auth
-auth.authenticate_user()
-sys.path.insert(0,str(PROJECT/'scripts'))
-import drive_folder_guard
-drive_folder_guard.check([RUNS,MANIFESTS,EVAL],model_tag=GROUP)
+# 결과 폴더의 첫 새 단계가 모델별(<실험>_<모델>)이라 다른 모델 노트북과 동시에 실행해도 같은 폴더를 만들지 않는다.
+# 그래서 Drive API 중복 폴더 검사(두 번째 구글 인증)는 생략한다. 같은 모델을 두 노트북에서 동시에 돌리지만 않으면 된다.
 ```
 
 ## Cell 3 — 데이터 준비 (FF++ train/val·test, CDF)

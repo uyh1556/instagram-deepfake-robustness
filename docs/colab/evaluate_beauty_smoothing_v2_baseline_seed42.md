@@ -28,7 +28,7 @@ subprocess.run([sys.executable,'-m','pip','install','-q','--no-build-isolation',
 subprocess.run([sys.executable,'-c','import torch; assert torch.cuda.is_available(),"GPU 런타임 선택"; print(torch.cuda.get_device_name(0))'],check=True)
 ```
 
-## Cell 2 — 모델·경로·중복 폴더 검사
+## Cell 2 — 모델·경로
 
 ```python
 MODELS=['clip_b16']  # 노트북마다 하나: ['xception'] / ['clip_b16'] / ['dinov2_b14']
@@ -49,15 +49,8 @@ for d in DATASETS:
         assert (ARCHIVE/f'{d}_{part}.tar').is_file(),f'캐시 노트북을 먼저 실행하세요: {d}_{part}.tar'
 print('Model:',GROUP,'| Results:',OUTPUT,flush=True)
 
-try:
-    import googleapiclient.discovery
-except ImportError:
-    subprocess.run([sys.executable,'-m','pip','install','-q','google-api-python-client','google-auth'],check=True)
-from google.colab import auth
-auth.authenticate_user()
-sys.path.insert(0,str(PROJECT/'scripts'))
-import drive_folder_guard
-drive_folder_guard.check([OUTPUT],model_tag=GROUP)
+# 결과 폴더의 첫 새 단계가 모델별(<실험>_<모델>)이라 다른 모델 노트북과 동시에 실행해도 같은 폴더를 만들지 않는다.
+# 그래서 Drive API 중복 폴더 검사(두 번째 구글 인증)는 생략한다. 같은 모델을 두 노트북에서 동시에 돌리지만 않으면 된다.
 ```
 
 ## Cell 3 — 테스트 데이터 준비
