@@ -6,16 +6,16 @@ for the 4 conditions of one model/strategy. No models, images or inference.
   skew                 mean AUC where the FAKE is more smoothed - mean AUC where the REAL is more smoothed
                        (0 = smoothing does not move scores; positive = smoothed images look more fake.
                        Pooled AUC cannot see this because the two directions cancel)
-  strong_real_vs_normal_fake   AUC(strong-smoothed real vs unsmoothed fake)
-  normal_real_vs_strong_fake   AUC(unsmoothed real vs strong-smoothed fake)
-  real_side_gap        normal AUC - strong_real_vs_normal_fake  (false-positive direction: beautified real)
-  fake_side_gap        normal AUC - normal_real_vs_strong_fake  (miss direction: beautified fake).
+  fp_cross_auc         AUC(strong-smoothed real vs unsmoothed fake)
+  fn_cross_auc         AUC(unsmoothed real vs strong-smoothed fake)
+  fp_gap               normal AUC - fp_cross_auc  (false-positive direction: beautified real)
+  fn_gap               normal AUC - fn_cross_auc  (miss direction: beautified fake).
                        Invariance needs BOTH near 0; one small and one large only moved the bias.
   fpr_<cond>@0         share of real frames called fake at the model's own threshold (raw margin 0)
   fpr_strong@normal5   threshold set so 5% of UNSMOOTHED real frames are called fake; share of
                        STRONG-smoothed real frames called fake at that same threshold
-  flip_real@normal5    real frames called real when unsmoothed but fake when strongly smoothed (paired)
-  fnr_strong@normal5 / flip_fake@normal5   same threshold, fake side: strong-smoothed fakes missed /
+  fp_flip@normal5      real frames called real when unsmoothed but fake when strongly smoothed (paired)
+  fnr_strong@normal5 / fn_flip@normal5   same threshold, fake side: strong-smoothed fakes missed /
                        fakes caught when unsmoothed but missed when strongly smoothed (paired)
   real_shift / fake_shift   mean raw-margin change normal->strong, in units of the normal real std
 
@@ -53,17 +53,17 @@ def measure(y, margins):
     rank = np.arange(len(CONDITIONS))
     row = dict(pooled16=float(grid.mean()), normal_auc=grid[0, 0],
                skew=float(grid[rank[:, None] < rank[None, :]].mean()-grid[rank[:, None] > rank[None, :]].mean()),
-               strong_real_vs_normal_fake=grid[-1, 0], normal_real_vs_strong_fake=grid[0, -1],
-               real_side_gap=grid[0, 0]-grid[-1, 0], fake_side_gap=grid[0, 0]-grid[0, -1])
+               fp_cross_auc=grid[-1, 0], fn_cross_auc=grid[0, -1],
+               fp_gap=grid[0, 0]-grid[-1, 0], fn_gap=grid[0, 0]-grid[0, -1])
     for c in CONDITIONS:
         row[f'fpr_{c}@0'] = float((margins[c][real] >= 0).mean())
         row[f'fnr_{c}@0'] = float((margins[c][fake] < 0).mean())
     threshold = np.quantile(margins['normal'][real], 1-NORMAL_FPR)
     row['fpr_strong@normal5'] = float((margins['smooth_strong'][real] >= threshold).mean())
     row['fnr_normal@normal5'] = float((margins['normal'][fake] < threshold).mean())
-    row['flip_real@normal5'] = float(((margins['normal'][real] < threshold) & (margins['smooth_strong'][real] >= threshold)).mean())
+    row['fp_flip@normal5'] = float(((margins['normal'][real] < threshold) & (margins['smooth_strong'][real] >= threshold)).mean())
     row['fnr_strong@normal5'] = float((margins['smooth_strong'][fake] < threshold).mean())
-    row['flip_fake@normal5'] = float(((margins['normal'][fake] >= threshold) & (margins['smooth_strong'][fake] < threshold)).mean())
+    row['fn_flip@normal5'] = float(((margins['normal'][fake] >= threshold) & (margins['smooth_strong'][fake] < threshold)).mean())
     scale = margins['normal'][real].std()
     row['real_shift'] = float((margins['smooth_strong'][real]-margins['normal'][real]).mean()/scale)
     row['fake_shift'] = float((margins['smooth_strong'][fake]-margins['normal'][fake]).mean()/scale)

@@ -47,13 +47,13 @@ class GeneralizationTests(unittest.TestCase):
             table = pd.read_csv(g.output_root/'summary.csv')
             self.assertEqual(len(table), 5*4)                     # 5 checkpoints x (bilateral + 3 held-out)
             self.assertEqual(set(table['filter']), {'bilateral', *general.beauty.FILTERS})
-            ref = pd.read_csv(a.output_root/'summary.csv').set_index('strategy').smoothing_gap
-            bil = table[table['filter'].eq('bilateral')].set_index('strategy').smoothing_gap
+            ref = pd.read_csv(a.output_root/'summary.csv').set_index('strategy').fp_gap
+            bil = table[table['filter'].eq('bilateral')].set_index('strategy').fp_gap
             self.assertTrue(np.allclose(bil[ref.index], ref))     # reused predictions give identical bilateral gaps
-            boot = pd.read_csv(g.output_root/'bootstrap_smoothing_gap_vs_aug_pair_rank.csv')
+            boot = pd.read_csv(g.output_root/'bootstrap_gaps_vs_aug_pair_rank.csv')
             self.assertEqual(len(boot), 4*4*2)                    # filters x other conditions x (real, fake) side
-            self.assertEqual(set(boot.metric), {'smoothing_gap', 'fake_side_gap'})
-            self.assertTrue(np.allclose(table.fake_side_gap, table.normal_auc-table.normal_real_vs_strong_fake))
+            self.assertEqual(set(boot.metric), {'fp_gap', 'fn_gap'})
+            self.assertTrue(np.allclose(table.fn_gap, table.normal_auc-table.fn_cross_auc))
             times = {p.name: p.stat().st_mtime_ns for p in g.output_root.glob('*_smooth_strong.csv')}
             general.evaluate(g)
             self.assertEqual(times, {p.name: p.stat().st_mtime_ns for p in g.output_root.glob('*_smooth_strong.csv')})

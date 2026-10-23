@@ -8,7 +8,7 @@ calibrated strength (calibrate_beauty_filters.py, FF++ train only) and the same 
 evaluation (checkpoint hashes verified). Each full filter output is computed once per frame into a
 lossless local cache shared by every checkpoint and strength (optionally packed to / restored from one
 tar on Drive so parallel model notebooks do not repeat it). No training, no selection; test labels
-only score the metrics. Per (checkpoint, filter): real-side and fake-side smoothing gaps, skew, real/fake flips,
+only score the metrics. Per (checkpoint, filter): fp_gap / fn_gap, skew, fp/fn flips,
 paired shifts, plus a video bootstrap of each condition's gaps minus aug_pair_rank's.
 """
 import argparse
@@ -211,7 +211,7 @@ def evaluate(args):
             for filt, margins in banks[label].items():
                 measured = shift.measure(labels, margins)
                 rows.append(dict(model=name, strategy=label, filter=filt, held_out=filt != 'bilateral',
-                                 smoothing_gap=measured['real_side_gap'], **measured))
+                                 **measured))
             del model
             if args.device == 'cuda':
                 torch.cuda.empty_cache()
@@ -221,13 +221,13 @@ def evaluate(args):
                                                  dict(model=name, filter=filt))
     table = pd.DataFrame(rows)
     table.to_csv(args.output_root/'summary.csv', index=False)
-    pd.DataFrame(boots).to_csv(args.output_root/'bootstrap_smoothing_gap_vs_aug_pair_rank.csv', index=False)
+    pd.DataFrame(boots).to_csv(args.output_root/'bootstrap_gaps_vs_aug_pair_rank.csv', index=False)
     base.common.json_write(args.output_root/'protocol.json', dict(protocol=PROTOCOL, manifest_sha256=provenance['manifest_sha256'],
         calibration=calibration_values(args.calibration), levels=LEVELS, trained_with='bilateral pairs only',
         reused_from=str(args.ablation_output_root), test_used_for_selection=False))
     with pd.option_context('display.width', 250, 'display.max_columns', 20):
-        for metric, title in [('smoothing_gap', 'Real-side gap (clean AUC - AUC(strong real vs clean fake))'),
-                              ('fake_side_gap', 'Fake-side gap (clean AUC - AUC(clean real vs strong fake))')]:
+        for metric, title in [('fp_gap', 'Real-side gap (clean AUC - AUC(strong real vs clean fake))'),
+                              ('fn_gap', 'Fake-side gap (clean AUC - AUC(clean real vs strong fake))')]:
             print(title, 'by evaluation filter:')
             print(table.pivot_table(index=['model', 'strategy'], columns='filter', values=metric, sort=False).round(4).to_string())
         if boots:

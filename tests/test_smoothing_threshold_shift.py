@@ -35,18 +35,18 @@ class ThresholdShiftTests(unittest.TestCase):
             pushed = shift.measure(*shift.load(write(Path(tmp), .6)))
         self.assertAlmostEqual(still['skew'], 0)
         self.assertAlmostEqual(still['fpr_strong@normal5'], .05, places=2)
-        self.assertEqual(still['flip_real@normal5'], 0)
+        self.assertEqual(still['fp_flip@normal5'], 0)
         self.assertGreater(pushed['skew'], .1)
         self.assertGreater(pushed['fpr_strong@normal5'], .3)
-        self.assertGreater(pushed['flip_real@normal5'], .25)
+        self.assertGreater(pushed['fp_flip@normal5'], .25)
         self.assertAlmostEqual(pushed['real_shift']/pushed['fake_shift'], 3, places=6)
-        self.assertLess(pushed['strong_real_vs_normal_fake'], pushed['normal_auc'])
+        self.assertLess(pushed['fp_cross_auc'], pushed['normal_auc'])
         # Fakes are pushed toward "fake" too, so the miss direction gets easier, not harder.
-        self.assertAlmostEqual(pushed['fake_side_gap'], pushed['normal_auc']-pushed['normal_real_vs_strong_fake'])
-        self.assertLess(pushed['fake_side_gap'], 0)
-        self.assertEqual(pushed['flip_fake@normal5'], 0)
-        self.assertAlmostEqual(still['real_side_gap'], 0)
-        self.assertAlmostEqual(still['fake_side_gap'], 0)
+        self.assertAlmostEqual(pushed['fn_gap'], pushed['normal_auc']-pushed['fn_cross_auc'])
+        self.assertLess(pushed['fn_gap'], 0)
+        self.assertEqual(pushed['fn_flip@normal5'], 0)
+        self.assertAlmostEqual(still['fp_gap'], 0)
+        self.assertAlmostEqual(still['fn_gap'], 0)
 
     def test_mismatched_images_are_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:

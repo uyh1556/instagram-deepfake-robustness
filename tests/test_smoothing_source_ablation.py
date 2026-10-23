@@ -90,12 +90,16 @@ class SourceAblationTests(unittest.TestCase):
         ablation.evaluate(a)
         table = pd.read_csv(a.output_root/'summary.csv')
         self.assertEqual(list(table.strategy), ['baseline', 'aug_single', 'aug_pair_rank'])
-        self.assertTrue((table.smoothing_gap == table.normal_auc-table.strong_real_vs_normal_fake).all())
-        boot = pd.read_csv(a.output_root/'bootstrap_smoothing_gap_vs_aug_pair_rank.csv')
+        self.assertTrue((table.fp_gap == table.normal_auc-table.fp_cross_auc).all())
+        boot = pd.read_csv(a.output_root/'bootstrap_gaps_vs_aug_pair_rank.csv')
         self.assertEqual(set(boot.strategy), {'baseline', 'aug_single'})
-        self.assertEqual(set(boot.metric), {'smoothing_gap', 'fake_side_gap'})
-        self.assertTrue((table.fake_side_gap == table.normal_auc-table.normal_real_vs_strong_fake).all())
+        self.assertEqual(set(boot.metric), {'fp_gap', 'fn_gap'})
+        self.assertTrue((table.fn_gap == table.normal_auc-table.fn_cross_auc).all())
         times = {p.name: p.stat().st_mtime_ns for p in a.output_root.glob('*_normal.csv')}
+        # An evaluation-only edit to this file changes its digest; completed runs must still be skipped.
+        own = ablation.Path(ablation.__file__).name
+        with patch.object(ablation, 'code_hashes', side_effect=lambda: {**ablation.pool.code_hashes(), own: 'edited'}):
+            ablation.train(a)
         ablation.evaluate(a)
         self.assertEqual(times, {p.name: p.stat().st_mtime_ns for p in a.output_root.glob('*_normal.csv')})
 
