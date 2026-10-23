@@ -124,7 +124,9 @@ def filtered(args, cache, rows, part, value):
     todo = [p for p in rows if not cache.path(part, p).is_file()]
     print(f'{part}: {len(rows)-len(todo)}/{len(rows)} ready; filtering {len(todo)} with {args.workers} CPU workers', flush=True)
     jobs = [(str(args.data_root), str(cache.root), part, value, p) for p in todo]
-    pool = Pool(args.workers) if args.workers > 1 else None
+    # One OpenCV thread per worker process: the filters are already parallel across frames, and nested OpenCV threads
+    # oversubscribe the cores. Results are identical (thread count does not change the filter output).
+    pool = Pool(args.workers, initializer=cv2.setNumThreads, initargs=(1,)) if args.workers > 1 else None
     done = pool.imap_unordered(_fill, jobs, chunksize=16) if pool else map(_fill, jobs)
     for k, _ in enumerate(done, 1):
         if k % 2000 == 0 or k == len(jobs):

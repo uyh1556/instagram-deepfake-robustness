@@ -721,3 +721,7 @@ FF++ val 1,200장, v1 ablation seed42, 원본 vs v1 강(.75). Drive evaluations/
 
 ## 후보 3: 스무딩 방향 제거 진단 구현 (2026-10-23)
 scripts/diagnose_smoothing_direction_removal.py(+테스트, 노트북 diagnose_smoothing_direction_removal). v1 ablation seed42 Baseline/aug_pair/aug_pair_rank × 3백본. FF++ train 1,200장의 (bilateral 강 − 원본) 특징 차이 상위 k(0/1/4/16) SVD 방향을 투영으로 제거, 로지스틱 분류기만 FF++ train 원본으로 재학습(백본 고정; k=0 = 재학습 대조군). FF++ val 1,200장 원본 vs v1 강 4필터로 원본 AUC, fp/fn gap, 점수 이동(σ), 제거 후 감지 AUC. 처음 보는 필터는 방향 추정에 쓰지 않음, CDF·test 미사용. 목적: D1의 상관(흔적 유지 + 일정 차감)을 인과로 확인 — 흔적 방향을 지우면 DT 역전·잔여 쏠림이 줄어드는가. 세 백본을 한 실행에서 돌려 뷰를 한 번만 계산(D1에서 모델마다 뷰를 다시 만든 비효율 수정). GPU 실행 전.
+
+## v2 캐시 속도와 weighted median 비결정성 (2026-10-23)
+- FF++ 크롭이 커서(한 변 중앙값 299, 상위 10% 587, 1% 945px; CDF 평균 266) 공간 범위가 크기에 비례하는 bilateral 비용이 크기^4로 증가(Mac 1스레드 256px 0.09s, 600px 2.7s, 800px 8.5s). ffpp_trainval 62,418장은 T4(2코어)에서 필터만 하루 이상 → 코어가 많은 런타임 권장. 캐시 워커마다 OpenCV 스레드 1개로 고정(중첩 스레드 과다 방지; bilateral 결과 동일 확인).
+- OpenCV contrib weightedMedianFilter는 같은 입력·같은 스레드 수에서도 실행마다 출력이 다름(픽셀 약 55%가 다르나 5단계 초과는 약 4%, 피부 변화량 3.25±0.01). 따라서 WMF 결과는 비트 단위 재현이 안 되며, 한 번 만든 캐시 tar가 기준이다(재계산 금지). 보정값에는 영향 미미.
