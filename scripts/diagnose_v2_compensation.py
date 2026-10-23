@@ -25,7 +25,7 @@ base, evaluation = diagonal.base, diagonal.evaluation
 
 
 def curve(args):
-    summary = pd.read_csv(args.eval_root/'summary.csv')
+    summary = pd.read_csv(args.eval_root/args.summary_name)
     rows = []
     for (name, label), _ in summary.groupby(['model', 'strategy'], sort=False):
         normal = pd.read_csv(args.eval_root/f'{name}_{label}_normal.csv', dtype={'crop_path': str})
@@ -42,11 +42,12 @@ def curve(args):
                 row[f'real_{level}'], row[f'fake_{level}'] = delta[y == 0].mean()/std, delta[y == 1].mean()/std
             rows.append(row)
     table = pd.DataFrame(rows)
-    table.to_csv(args.eval_root/'strength_curve.csv', index=False)
+    out = args.eval_root/args.summary_name.replace('summary', 'strength_curve')
+    table.to_csv(out, index=False)
     with pd.option_context('display.width', 250, 'display.max_columns', 20):
         print('Paired score shift (sigma of clean reals): + = toward fake, - = toward real')
         print(table.round(2).to_string(index=False))
-    print('Saved:', args.eval_root/'strength_curve.csv', flush=True)
+    print('Saved:', out, flush=True)
     return table
 
 
@@ -64,7 +65,7 @@ def probe(args):
     for name in args.models:
         initial, initial_hash = evaluation.checkpoint(argparse.Namespace(runs_root=args.baseline_runs_root, seed=args.baseline_seed), name)
         states = [('baseline', initial['model_state_dict'])]
-        for label, _, _ in diagonal.variants(args.strategies, args.fc_weights, args.fc_ramp_epochs):
+        for label, _, _ in diagonal.variants(args.strategies, args.fc_weights, args.fc_ramp_epochs, args.adv_weights, args.adv_ramp_epochs, args.proj_ks):
             weights, _, _ = diagonal.completed_checkpoint(args.runs_root, name, args.train_filter, label, args.seed, initial_hash)
             states.append((f'{label}@{args.train_filter}', weights))
         for label, weights in states:
@@ -85,7 +86,7 @@ def probe(args):
                 torch.cuda.empty_cache()
     table = pd.DataFrame(rows)
     args.output_root.mkdir(parents=True, exist_ok=True)
-    table.to_csv(args.output_root/f'trace_probe_{args.train_filter}_seed{args.seed}.csv', index=False)
+    table.to_csv(args.output_root/f'trace_probe_{args.train_filter}_seed{args.seed}{args.tag}.csv', index=False)
     print('Saved:', args.output_root, flush=True)
     return table
 
@@ -97,11 +98,16 @@ def parse_args(argv=None):
     for field in ['source-root', 'baseline-runs-root', 'runs-root', 'archive-dir', 'output-root']:
         p.add_argument('--'+field, type=Path)
     p.add_argument('--cache-root', type=Path, default=Path('/content/beauty_smoothing_v2_cache'))
+    p.add_argument('--summary-name', default='summary.csv', help='curve: which evaluation summary to read (strength_curve name follows it)')
+    p.add_argument('--tag', default='', help='probe: suffix of the output file (e.g. _adv) for notebooks sharing a folder')
     p.add_argument('--train-filter', choices=v2.FILTERS, default='bilateral')
     p.add_argument('--models', nargs='+', choices=list(base.PREPROCESS), default=['clip_b16'])
     p.add_argument('--strategies', nargs='+', choices=diagonal.STRATEGIES, default=['aug_pair_rank', 'aug_pair_rank_fc'])
     p.add_argument('--fc-weights', nargs='+', type=float, default=[1.])
     p.add_argument('--fc-ramp-epochs', type=float, default=0.)
+    p.add_argument('--adv-weights', nargs='+', type=float, default=[1.])
+    p.add_argument('--adv-ramp-epochs', type=float, default=2.)
+    p.add_argument('--proj-ks', nargs='+', type=int, default=[4])
     for field, default in [('seed', 42), ('baseline-seed', 42), ('images', 1200), ('folds', 5), ('batch-size', 64), ('workers', 2)]:
         p.add_argument('--'+field, type=int, default=default)
     p.add_argument('--device', choices=['cuda', 'cpu'], default='cuda')

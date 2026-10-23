@@ -17,6 +17,7 @@ import build_beauty_smoothing_v2_cache as builder
 import evaluate_beauty_smoothing_v2 as evaluation
 import diagnose_v2_compensation as compensation
 import ffpp_c23_smoothing_v2_diagonal as diagonal
+import ffpp_c23_smoothing_v2_projection as projection
 import test_beauty_smoothing_v2 as v2_fixture
 import test_smoothing_rank_sda_pool_v2 as fixture
 
@@ -44,9 +45,10 @@ class DiagonalTests(unittest.TestCase):
         values = dict(source_root=a.source_root, baseline_runs_root=a.baseline_runs_root, runs_root=self.root/'diag_runs',
                       manifest_root=self.root/'diag_manifests', archive_dir=self.root/'drive', source_validation=None,
                       cache_root=self.root/'cache_train', train_filter='bilateral', models=['dinov2_b14'],
-                      strategies=list(diagonal.STRATEGIES), seed=42, baseline_seed=42, epochs=2, patience=3, source_images=16,
+                      strategies=list(diagonal.STRATEGIES[:4]), seed=42, baseline_seed=42, epochs=2, patience=3, source_images=16,
                       val_images=16, batch_size=4, workers=0, encoder_lr=1e-4, head_lr=1e-4, weight_decay=1e-4,
-                      ranking_weight=.25, fc_weights=[1.], fc_ramp_epochs=0., replace_runs=[], device='cpu')
+                      ranking_weight=.25, fc_weights=[1.], fc_ramp_epochs=0., adv_weights=[1.], adv_ramp_epochs=2., adv_lr=1e-3, proj_ks=[4], replace_runs=[],
+                      device='cpu')
         return argparse.Namespace(**{**values, **extra})
 
     def build_caches(self):
@@ -62,7 +64,7 @@ class DiagonalTests(unittest.TestCase):
             self.build_caches()
             t = self.train_args()
             diagonal.train(t)
-            labels = [label for label, _, _ in diagonal.variants(diagonal.STRATEGIES, [1.])]
+            labels = [label for label, _, _ in diagonal.variants(diagonal.STRATEGIES[:4], [1.])]
             self.assertEqual(labels, ['aug_single', 'aug_pair', 'aug_pair_rank', 'aug_pair_rank_fc1'])
             runs = {s: t.runs_root/diagonal.run_name('dinov2_b14', 'bilateral', s, 42) for s in labels}
             for strategy, run in runs.items():
@@ -104,6 +106,17 @@ class DiagonalTests(unittest.TestCase):
                                            replace_runs=['aug_pair_rank_fc100_ramp2']))
             self.assertEqual(len(list(r.runs_root.glob('*_fc100_ramp2_*_replaced_*'))), 1)
             self.assertIn('patience_rule', json.loads((old/'config.json').read_text()))
+            # Adversarial trace removal trains, logs the discriminator BCE and stores it for resume.
+            adv = self.train_args(strategies=['aug_pair_rank_adv'], adv_weights=[.5])
+            self.assertEqual([l for l, _, _ in diagonal.variants(adv.strategies, [1.], 0., [.5], 2.)], ['aug_pair_rank_adv0.5_ramp2'])
+            diagonal.train(adv)
+            arun = adv.runs_root/diagonal.run_name('dinov2_b14', 'bilateral', 'aug_pair_rank_adv0.5_ramp2', 42)
+            self.assertTrue(all('adversary_bce' in h for h in json.loads((arun/'history.json').read_text())))
+            self.assertIn('discriminator', torch.load(arun/'last.pt', weights_only=True))
+            self.assertEqual(json.loads((arun/'config.json').read_text())['adv_weight'], .5)
+            # The post-hoc projection label is skipped by the trainer.
+            diagonal.train(self.train_args(strategies=['aug_pair_rank_proj']))
+            self.assertFalse((adv.runs_root/diagonal.run_name('dinov2_b14', 'bilateral', 'aug_pair_rank_proj4', 42)).exists())
             # fc_weight=0 reproduces aug_pair_rank exactly: the consistency term is the only difference.
             z = self.train_args(runs_root=self.root/'zero_runs', fc_weights=[0., 10.], strategies=['aug_pair_rank', 'aug_pair_rank_fc'])
             diagonal.train(z)
@@ -122,14 +135,30 @@ class DiagonalTests(unittest.TestCase):
         e = argparse.Namespace(dataset='cdf_test', data_root=self.args.target_root, baseline_runs_root=self.args.baseline_runs_root,
             archive_dir=self.root/'drive', output_root=self.root/'eval', cache_root=self.root/'cache_eval', protocol=self.args.protocol,
             models=['dinov2_b14'], seed=42, baseline_seed=42, eval_batch_size=4, workers=0, device='cpu',
-            runs_root=t.runs_root, train_filters=['bilateral'], strategies=list(diagonal.STRATEGIES), fc_weights=[1.], fc_ramp_epochs=0., membership=None, checkpoint='best')
+            runs_root=t.runs_root, train_filters=['bilateral'], strategies=list(diagonal.STRATEGIES[:4]), fc_weights=[1.], fc_ramp_epochs=0., adv_weights=[1.], adv_ramp_epochs=2., proj_ks=[4], membership=None, checkpoint='best', summary_name='summary.csv')
         table = evaluation.evaluate(e)
-        self.assertEqual(len(table), (1+len(diagonal.STRATEGIES))*len(v2.FILTERS))
+        self.assertEqual(len(table), (1+4)*len(v2.FILTERS))
         trained = table[table.method.ne('baseline')]
         self.assertEqual(set(trained.strategy), {f'{s}@bilateral' for s in labels})
         self.assertEqual(set(trained[trained['filter'].eq('bilateral')].held_out), {False})
         self.assertEqual(set(trained[trained['filter'].ne('bilateral')].held_out), {True})
         self.assertFalse(table[table.method.eq('baseline')].held_out.any())
+        # A': projection heads built post hoc from the aug_pair_rank run, then scored like any other run.
+        with patch.object(v2, 'full', side_effect=v2_fixture.fake_full):
+            pargs = argparse.Namespace(source_root=self.args.source_root, baseline_runs_root=self.args.baseline_runs_root,
+                runs_root=t.runs_root, archive_dir=self.root/'drive', cache_root=self.root/'cache_proj', source_validation=None,
+                train_filter='bilateral', models=['dinov2_b14'], proj_ks=[1, 2], seed=42, baseline_seed=42, images=16, val_images=16,
+                batch_size=4, workers=0, c=1., device='cpu')
+            projection.build(pargs)
+            with patch.object(projection, 'features', side_effect=AssertionError('rebuilt')):
+                projection.build(pargs)                                    # completed heads are not rebuilt
+        prun = t.runs_root/diagonal.run_name('dinov2_b14', 'bilateral', 'aug_pair_rank_proj2', 42)
+        u = np.load(prun/'trace_directions.npy')
+        w = torch.load(prun/'best.pt', weights_only=True)['model_state_dict']['fc.weight'].numpy()
+        self.assertLess(np.abs((w[1]-w[0])@u).max(), 1e-4)                 # the refit head is blind to the trace directions
+        ptable = evaluation.evaluate(argparse.Namespace(**{**vars(e), 'output_root': self.root/'eval_proj',
+                                                           'strategies': ['aug_pair_rank_proj'], 'proj_ks': [1, 2]}))
+        self.assertEqual(set(ptable.strategy) - {'baseline'}, {'aug_pair_rank_proj1@bilateral', 'aug_pair_rank_proj2@bilateral'})
         # last.pt diagnostic goes to its own summary file and labels; best.pt summary is untouched.
         before = (e.output_root/'summary.csv').read_bytes()
         last = evaluation.evaluate(argparse.Namespace(**{**vars(e), 'checkpoint': 'last', 'strategies': ['aug_pair_rank']}))
@@ -139,7 +168,7 @@ class DiagonalTests(unittest.TestCase):
 
         # Strength curve from the saved predictions only (no model is built).
         with patch.object(evaluation.base, 'build_model', side_effect=AssertionError('inference')):
-            c = compensation.curve(argparse.Namespace(eval_root=e.output_root))
+            c = compensation.curve(argparse.Namespace(eval_root=e.output_root, summary_name='summary.csv'))
         self.assertEqual(len(c), len(table))
         self.assertEqual({k for k in c if k.startswith(('real_', 'fake_'))},
                          {f'{s}_{l}' for s in ['real', 'fake'] for l in ['weak', 'medium', 'strong']})
@@ -149,8 +178,8 @@ class DiagonalTests(unittest.TestCase):
         with patch.object(v2, 'full', side_effect=v2_fixture.fake_full):
             pr = compensation.probe(argparse.Namespace(source_root=self.args.source_root, baseline_runs_root=self.args.baseline_runs_root,
                 runs_root=t.runs_root, archive_dir=self.root/'drive', cache_root=self.root/'cache_probe', output_root=self.root/'probe',
-                train_filter='bilateral', models=['dinov2_b14'], strategies=['aug_pair_rank', 'aug_pair_rank_fc'], fc_weights=[1.], fc_ramp_epochs=0.,
-                seed=42, baseline_seed=42, images=16, folds=2, batch_size=4, workers=0, device='cpu'))
+                train_filter='bilateral', models=['dinov2_b14'], strategies=['aug_pair_rank', 'aug_pair_rank_fc'], fc_weights=[1.], fc_ramp_epochs=0., adv_weights=[1.], adv_ramp_epochs=2.,
+                proj_ks=[4], seed=42, baseline_seed=42, images=16, folds=2, batch_size=4, workers=0, device='cpu', tag=''))
         self.assertEqual(list(pr.strategy), ['baseline', 'aug_pair_rank@bilateral', 'aug_pair_rank_fc1@bilateral'])
         self.assertTrue(pr.probe_auc.between(0, 1).all() and (pr.feature_shift >= 0).all())
 

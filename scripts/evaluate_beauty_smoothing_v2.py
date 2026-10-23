@@ -74,7 +74,7 @@ def checkpoints(args, name):
     out = [('baseline', None, None, initial['model_state_dict'], initial_hash)]
     if args.runs_root is not None:
         for train_filter in args.train_filters:
-            for label, _, _ in diagonal.variants(args.strategies, args.fc_weights, args.fc_ramp_epochs):
+            for label, _, _ in diagonal.variants(args.strategies, args.fc_weights, args.fc_ramp_epochs, args.adv_weights, args.adv_ramp_epochs, args.proj_ks):
                 weights, digest, epoch = diagonal.completed_checkpoint(args.runs_root, name, train_filter, label, args.seed, initial_hash,
                                                                        args.checkpoint)
                 suffix = '' if args.checkpoint == 'best' else f'#last_epoch{epoch}'
@@ -127,9 +127,10 @@ def evaluate(args):
             if args.device == 'cuda':
                 torch.cuda.empty_cache()
     table = pd.DataFrame(rows)
-    table.to_csv(args.output_root/('summary.csv' if args.checkpoint == 'best' else 'summary_last_diagnostic.csv'), index=False)
-    base.common.json_write(args.output_root/('protocol.json' if args.checkpoint == 'best' else 'protocol_last_diagnostic.json'), dict(checkpoint=args.checkpoint, protocol=v2.PROTOCOL, experiment=EXPERIMENT,
-        dataset=args.dataset, seed=args.seed, train_filters=args.train_filters, strategies=args.strategies, fc_weights=args.fc_weights, fc_ramp_epochs=args.fc_ramp_epochs, manifest_sha256=provenance['manifest_sha256'], cache_identity=cache.identity, levels=v2.LEVELS,
+    stem = args.summary_name.removesuffix('.csv')
+    table.to_csv(args.output_root/(f'{stem}.csv' if args.checkpoint == 'best' else f'{stem}_last_diagnostic.csv'), index=False)
+    base.common.json_write(args.output_root/(('protocol' if stem == 'summary' else f'protocol_{stem}')+('.json' if args.checkpoint == 'best' else '_last_diagnostic.json')), dict(checkpoint=args.checkpoint, protocol=v2.PROTOCOL, experiment=EXPERIMENT,
+        dataset=args.dataset, seed=args.seed, train_filters=args.train_filters, strategies=args.strategies, fc_weights=args.fc_weights, fc_ramp_epochs=args.fc_ramp_epochs, adv_weights=args.adv_weights, adv_ramp_epochs=args.adv_ramp_epochs, proj_ks=args.proj_ks, manifest_sha256=provenance['manifest_sha256'], cache_identity=cache.identity, levels=v2.LEVELS,
         test_used_for_selection=False))
     with pd.option_context('display.width', 250, 'display.max_columns', 20):
         for metric in ['normal_auc', 'fp_gap', 'fn_gap', 'max_gap', 'fp_flip@normal5', 'fn_flip@normal5']:
@@ -151,7 +152,11 @@ def parse_args(argv=None):
     p.add_argument('--strategies', nargs='+', choices=diagonal.STRATEGIES, default=diagonal.STRATEGIES)
     p.add_argument('--fc-weights', nargs='+', type=float, default=[1.])
     p.add_argument('--fc-ramp-epochs', type=float, default=0.)
+    p.add_argument('--adv-weights', nargs='+', type=float, default=[1.])
+    p.add_argument('--adv-ramp-epochs', type=float, default=2.)
+    p.add_argument('--proj-ks', nargs='+', type=int, default=[4])
     p.add_argument('--checkpoint', choices=['best', 'last'], default='best', help='last = diagnostic only (summary_last_diagnostic.csv)')
+    p.add_argument('--summary-name', default='summary.csv', help='separate summary per notebook when several share one output folder')
     p.add_argument('--protocol', type=Path, default=ROOT/'configs/ffpp_c23_celebdf_smoothing_v1.json')  # CDF test counts only
     p.add_argument('--models', nargs='+', choices=list(base.PREPROCESS), default=['dinov2_b14'])
     for field, default in [('seed', 42), ('baseline-seed', 42), ('eval-batch-size', 64), ('workers', 2)]:

@@ -760,3 +760,9 @@ cdf_dev, bilateral 학습, seed42. 원본 AUC: Baseline .787, rank .744, fc1 .72
 Xception λ=100 워밍업 2 결과: epoch1 FF++ val pooled .966(epoch0)→.724, epoch2 .916, epoch3 .935로 회복 중 patience 3에 걸려 다시 epoch0 선택. 사용자 결정으로 워밍업 epoch은 patience에 세지 않도록 변경(config patience_rule), 같은 이름 run을 --replace-runs로 재학습(기존 폴더는 *_replaced_<시각>으로 보존). 평가는 체크포인트가 바뀐 예측을 재계산.
 워밍업+patience 변경 재학습 결과(Xception λ=100 ramp2): FF++ val pooled .724→.916→.935→.957→.955(epoch 5 종료), 강 진짜 vs 원본 가짜 .953까지 회복했으나 Baseline pooled .9666을 넘지 못해 다시 epoch0 선택. pooled AUC가 쏠림을 가리는 탓에 Baseline이 뽑히는 상황. 사용자 결정: 규칙을 바꾸기 전에 last.pt(epoch 5)를 cdf_dev로 진단 평가(evaluate --checkpoint last, summary_last_diagnostic.csv; 보고용 아님). 원칙: 선택 규칙을 바꾼다면 모든 조건에 동일 적용, 개발 세트로만, 이유는 결과 이전(pooled AUC 사각지대)에서, 시도는 모두 기록.
 last.pt(epoch 5) 진단 결과(cdf_dev, 보고용 아님): 원본 AUC .676(rank .744, Baseline .787; -0.068), max|gap| bil .045 / WMF .106(rank .152) / FGS .253(rank .102, 악화) / DT .397(가짜 -1.42σ, rank .353 -1.36σ). → 선택 규칙 문제가 아니라 코사인 일관성(λ=100) 자체가 Xception에서 처음 보는 필터 과보정을 못 줄이고 원본 AUC를 크게 잃음. 사전 합의 기준대로 Xception에서 학습법 A(코사인 FC) 불합격.
+
+## A'(흔적 방향 투영)와 적대 학습 구현, 파일럿 4개 (2026-10-24)
+코사인 일관성이 Xception에서 실패한 뒤 사용자 결정으로 두 후보를 동시에 파일럿(bilateral, seed42, cdf_dev, CLIP·Xception 각각).
+- A' = aug_pair_rank_proj<k> (scripts/ffpp_c23_smoothing_v2_projection.py, 학습 없음): 완료된 aug_pair_rank 체크포인트로 FF++ train 6,000장(원본 + 학습 필터, 학습과 같은 강도 추첨)의 분류기 입력 특징 → (스무딩−원본) 차이 상위 k SVD 방향 제거, 분류기를 투영된 **원본** 특징만으로 표준화 로지스틱 재학습해 모델의 선형 head에 접어 넣음(margin = (P w')·f + b'). 후보 3을 전체 학습 데이터로 한 형태. k ∈ {1,4,16}.
+- 적대 학습 = aug_pair_rank_adv<β>_ramp<R> (diagonal 트레이너): 분류기 입력 특징 → MLP(256) 판별기가 "스무딩 vs 원본"(검출 프레임, 두 view) BCE, gradient reversal로 백본은 이를 최대화. 판별기 학습률 1e-3(학습 전용, 추론 불필요, last.pt에 저장). β ∈ {0.1,1}, 워밍업 2 epoch(워밍업 동안 patience 미집계).
+- 같은 모델 노트북 둘이 같은 평가 폴더를 쓰므로 summary{TAG}.csv / strength_curve{TAG}.csv / trace_probe_*{TAG}.csv로 분리(TAG '_proj', '_adv').

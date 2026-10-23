@@ -14,6 +14,13 @@ the smoothing changes to v2 (face-parsing skin mask + one edge-preserving filter
                     --fc-ramp-epochs R > 0 raises lambda linearly from 0 over the first R epochs (per step) so the full network
                     (Xception) is not shocked at epoch 1; such runs are named aug_pair_rank_fc<lambda>_ramp<R>. The warm-up
                     epochs do not count toward the early-stopping patience (validation dips while lambda is still rising).
+  aug_pair_rank_adv aug_pair_rank + beta x adversarial trace removal: a small MLP discriminator on the head-input features
+                    learns "smoothed vs original" (detected frames, both views) while a gradient-reversal layer trains the
+                    backbone to make that impossible, i.e. it removes whatever the linear/MLP probe can detect (cosine
+                    consistency left small-magnitude directions on Xception). One run per --adv-weights value, named
+                    aug_pair_rank_adv<beta>[_ramp<R>] (--adv-ramp-epochs, same warm-up/patience rule as fc).
+  aug_pair_rank_proj post-hoc (ffpp_c23_smoothing_v2_projection.py, no training here): the aug_pair_rank backbone, its top-k
+                    smoothing-trace directions removed and the head refit on ORIGINAL frames only (candidate 3 at full data).
 Selection (best.pt): FF++ val (1,200 frames) pooled raw-margin AUC over original + filter-k weak/medium/strong; no
 Celeb-DF frame is used for training or selection. Evaluation lives in evaluate_beauty_smoothing_v2.py.
 """
@@ -38,7 +45,8 @@ pool, rank, engine, common, base = ablation.pool, ablation.rank, ablation.engine
 adaptation, evaluation = ablation.adaptation, ablation.evaluation
 ROOT = Path(__file__).resolve().parents[1]
 PROTOCOL = 'ffpp_c23_smoothing_v2_diagonal_v1'
-STRATEGIES = ['aug_single', 'aug_pair', 'aug_pair_rank', 'aug_pair_rank_fc']
+STRATEGIES = ['aug_single', 'aug_pair', 'aug_pair_rank', 'aug_pair_rank_fc', 'aug_pair_rank_adv', 'aug_pair_rank_proj']
+RANKED = ('aug_pair_rank', 'aug_pair_rank_fc', 'aug_pair_rank_adv')
 CONDITIONS = engine.CONDITIONS          # normal, smooth_weak, smooth_medium, smooth_strong
 CLEAN_PROBABILITY = ablation.CLEAN_PROBABILITY
 
@@ -52,13 +60,20 @@ def run_name(model, train_filter, label, seed):
     return f'{model}_{train_filter}_{label}_{PROTOCOL}_seed{seed}'
 
 
-def variants(strategies, fc_weights, fc_ramp=0.):
-    """(label, strategy, lambda): aug_pair_rank_fc expands to one run per lambda (label aug_pair_rank_fc<lambda>[_ramp<R>])."""
+def variants(strategies, fc_weights, fc_ramp=0., adv_weights=(1.,), adv_ramp=0., proj_ks=(4,)):
+    """(label, strategy, weight): fc/adv expand to one run per weight (label <strategy><w>[_ramp<R>]), proj to one per k."""
+    def suffix(r):
+        return f'_ramp{r:g}' if r > 0 else ''
     out = []
-    suffix = f'_ramp{fc_ramp:g}' if fc_ramp > 0 else ''
     for strategy in strategies:
-        out += ([(f'{strategy}{w:g}{suffix}', strategy, float(w)) for w in fc_weights] if strategy == 'aug_pair_rank_fc'
-                else [(strategy, strategy, 0.)])
+        if strategy == 'aug_pair_rank_fc':
+            out += [(f'{strategy}{w:g}{suffix(fc_ramp)}', strategy, float(w)) for w in fc_weights]
+        elif strategy == 'aug_pair_rank_adv':
+            out += [(f'{strategy}{w:g}{suffix(adv_ramp)}', strategy, float(w)) for w in adv_weights]
+        elif strategy == 'aug_pair_rank_proj':
+            out += [(f'{strategy}{int(k)}', strategy, float(k)) for k in proj_ks]
+        else:
+            out.append((strategy, strategy, 0.))
     return out
 
 
@@ -130,25 +145,50 @@ def feature_consistency(features, n, detected):
     return ((1-cos)*mask).sum()/mask.sum().clamp_min(1.)
 
 
-def source_loss(strategy, name, model, clean, smooth, labels, detected, args, seed, fc_scale=1.):
-    """Returns (loss, ce, rank, fc). The first three strategies reuse the source-ablation losses unchanged."""
-    if strategy != 'aug_pair_rank_fc':
+class TraceDiscriminator(nn.Module):
+    """Training-only: predicts smoothed (1) vs original (0) from the head input, behind a gradient-reversal layer."""
+    def __init__(self, features, hidden=256):
+        super().__init__()
+        self.net = nn.Sequential(nn.Linear(features, hidden), nn.ReLU(), nn.Linear(hidden, 1))
+
+    def forward(self, features):
+        return self.net(common.Reverse.apply(features.float(), 1.))[:, 0]
+
+
+def adversary_loss(discriminator, features, n, detected):
+    """BCE of the discriminator on both views of detected frames; through the reversal the backbone maximises it."""
+    mask = torch.cat([detected, detected]).float()
+    target = torch.cat([torch.zeros(n), torch.ones(n)]).to(features.device)
+    bce = nn.functional.binary_cross_entropy_with_logits(discriminator(features), target, reduction='none')
+    return (bce*mask).sum()/mask.sum().clamp_min(1.)
+
+
+def source_loss(strategy, name, model, clean, smooth, labels, detected, args, seed, scale=1., discriminator=None):
+    """Returns (loss, ce, rank, fc, adv). The first three strategies reuse the source-ablation losses unchanged."""
+    if strategy not in ('aug_pair_rank_fc', 'aug_pair_rank_adv'):
         loss, ce, rk = ablation.source_loss(strategy, name, model, clean, smooth, labels, args.ranking_weight, seed)
-        return loss, ce, rk, ce.new_zeros(())
+        return loss, ce, rk, ce.new_zeros(()), ce.new_zeros(())
     n = len(labels)
     logits, features = adaptation.outputs(name, model, torch.cat([clean, smooth]))
     logits = torch.stack([logits[:n], logits[n:]], dim=1)
     loss, ce, rk, _ = rank.classification_and_ranking(logits, labels, args.ranking_weight)
-    fc = feature_consistency(features, n, detected)
-    return loss+args.fc_weight*fc_scale*fc, ce, rk, fc
+    if strategy == 'aug_pair_rank_fc':
+        fc = feature_consistency(features, n, detected)
+        return loss+args.fc_weight*scale*fc, ce, rk, fc, ce.new_zeros(())
+    adv = adversary_loss(discriminator, features, n, detected)
+    return loss+args.adv_weight*scale*adv, ce, rk, ce.new_zeros(()), adv
 
 
 def configuration(args, name, strategy, data, cache_identity, initial, initial_hash):
-    weights = dict(ranking_weight=args.ranking_weight if strategy in ('aug_pair_rank', 'aug_pair_rank_fc') else 0.,
+    weights = dict(ranking_weight=args.ranking_weight if strategy in RANKED else 0.,
                    fc_weight=args.fc_weight if strategy == 'aug_pair_rank_fc' else 0.)
     if strategy == 'aug_pair_rank_fc' and args.fc_ramp_epochs > 0:      # keys absent otherwise: earlier runs stay reusable
         weights['fc_ramp_epochs'] = args.fc_ramp_epochs
         weights['patience_rule'] = 'warm-up epochs do not count toward patience'
+    if strategy == 'aug_pair_rank_adv':
+        weights.update(adv_weight=args.adv_weight, adv_ramp_epochs=args.adv_ramp_epochs, adv_lr=args.adv_lr, adv_hidden=256,
+                       adversary='MLP(head input -> 256 -> 1) smoothed-vs-original BCE behind gradient reversal; detected frames',
+                       patience_rule='warm-up epochs do not count toward patience')
     return dict(protocol=PROTOCOL, model=name, train_filter=args.train_filter, strategy=strategy, seed=args.seed,
         baseline_seed=args.baseline_seed, data=data,
         smoothing=dict(cache_identity, levels=v2.LEVELS), initial_checkpoint_sha256=initial_hash,
@@ -187,8 +227,14 @@ def train(args):
         if (initial['config']['data_hashes']['trainval'] != data['source_trainval_sha256']
                 or initial['config']['data_hashes']['protocol'] != data['source_protocol_sha256']):
             raise ValueError('Baseline/source mismatch')
-        for label, strategy, weight in variants(args.strategies, args.fc_weights, args.fc_ramp_epochs):
-            args.fc_weight = weight
+        for label, strategy, weight in variants(args.strategies, args.fc_weights, args.fc_ramp_epochs, args.adv_weights,
+                                                args.adv_ramp_epochs, args.proj_ks):
+            if strategy == 'aug_pair_rank_proj':
+                print('=== SKIP', label, '(post-hoc: run ffpp_c23_smoothing_v2_projection.py after aug_pair_rank) ===', flush=True)
+                continue
+            args.fc_weight = weight if strategy == 'aug_pair_rank_fc' else 0.
+            args.adv_weight = weight if strategy == 'aug_pair_rank_adv' else 0.
+            ramp = {'aug_pair_rank_fc': args.fc_ramp_epochs, 'aug_pair_rank_adv': args.adv_ramp_epochs}.get(strategy, 0.)
             config = configuration(args, name, strategy, data, cache_identity, initial, initial_hash)
             identity = evaluation.key(config)
             run = args.runs_root/run_name(name, args.train_filter, label, args.seed)
@@ -221,6 +267,10 @@ def train(args):
             head_ids = {id(p) for p in head.parameters()}
             groups = [{'params': [p for p in model.parameters() if p.requires_grad and id(p) not in head_ids], 'lr': args.encoder_lr},
                       {'params': list(head.parameters()), 'lr': args.head_lr}]
+            discriminator = None
+            if strategy == 'aug_pair_rank_adv':
+                discriminator = TraceDiscriminator(head.in_features).to(args.device)
+                groups.append({'params': list(discriminator.parameters()), 'lr': args.adv_lr})
             optimizer = torch.optim.AdamW(groups, weight_decay=args.weight_decay)
             parameters = [p for group in groups for p in group['params']]
             start, stale, history = 0, 0, []
@@ -229,12 +279,14 @@ def train(args):
                 if state['identity'] != identity:
                     raise ValueError('Resume identity differs')
                 model.load_state_dict(state['model_state_dict'], strict=True)
+                if discriminator is not None:
+                    discriminator.load_state_dict(state['discriminator'], strict=True)
                 optimizer.load_state_dict(state['optimizer'])
                 start, stale, history, best, anchor = [state[k] for k in ['epoch', 'stale', 'history', 'best', 'anchor']]
                 del state
-                print(f'=== RESUME {name} {args.train_filter} {strategy} from completed epoch {start} ===', flush=True)
+                print(f'=== RESUME {name} {args.train_filter} {label} from completed epoch {start} ===', flush=True)
             else:
-                print(f'=== START NEW {name} {args.train_filter} {strategy} ===', flush=True)
+                print(f'=== START NEW {name} {args.train_filter} {label} ===', flush=True)
                 values = validate(args, model, val, transform, cache)
                 best, anchor = pool.best_of(values), values['pooled_auc']
                 base.common.json_write(run/'epoch0_validation.json', values)
@@ -246,6 +298,8 @@ def train(args):
                 seed = args.seed+epoch*100003
                 base.common.seed_all(seed)
                 common.training_mode(model, name, blocks)
+                if discriminator is not None:
+                    discriminator.train()
                 sampled = adaptation.balanced_source(source, args.source_images, seed)
                 batches = rank.balanced_batches(torch.tensor(sampled.class_index.astype(int).to_numpy()), args.batch_size, seed)
                 loader = DataLoader(PairedV2(sampled, args, transform, cache, epoch), batch_sampler=batches,
@@ -253,7 +307,7 @@ def train(args):
                     generator=torch.Generator().manual_seed(seed))
                 # Epoch samples depend only on the seed (shared by every filter/strategy/model of that seed).
                 engine.freeze_csv(args.manifest_root/f'seed{args.seed}'/f'source_epoch{epoch+1:02d}.csv', sampled)
-                totals, seen = np.zeros(4), 0
+                totals, seen = np.zeros(5), 0
                 for step, (clean, smooth, labels, _, detected) in enumerate(tqdm(loader,
                         desc=f'{name} {args.train_filter} {strategy} {epoch+1}/{args.epochs}', mininterval=15, dynamic_ncols=True)):
                     base.common.seed_all(seed+step)
@@ -261,30 +315,33 @@ def train(args):
                                                        detected.to(args.device))
                     optimizer.zero_grad(set_to_none=True)
                     with base.amp_context(args):
-                        scale = ramp_scale(epoch, step, len(batches), args.fc_ramp_epochs)
-                        loss, ce, rk, fc = source_loss(strategy, name, model, clean, smooth, labels, detected, args, seed+step, scale)
+                        scale = ramp_scale(epoch, step, len(batches), ramp)
+                        loss, ce, rk, fc, adv = source_loss(strategy, name, model, clean, smooth, labels, detected, args, seed+step,
+                                                            scale, discriminator)
                     if not torch.isfinite(loss):
                         raise RuntimeError('Nonfinite loss; last completed epoch preserved')
                     loss.backward()
                     nn.utils.clip_grad_norm_(parameters, 1., error_if_nonfinite=True)
                     optimizer.step()
-                    totals += len(labels)*np.array([loss.item(), ce.item(), rk.item(), fc.item()])
+                    totals += len(labels)*np.array([loss.item(), ce.item(), rk.item(), fc.item(), adv.item()])
                     seen += len(labels)
                 values = validate(args, model, val, transform, cache)
                 improved = pool.is_better(values, best)
                 if improved:
                     best = pool.best_of(values)
-                warming = strategy == 'aug_pair_rank_fc' and epoch+1 <= args.fc_ramp_epochs
+                warming = strategy in ('aug_pair_rank_fc', 'aug_pair_rank_adv') and epoch+1 <= ramp
                 if values['pooled_auc'] > anchor+.0001:
                     anchor, stale = values['pooled_auc'], 0
                 elif not warming:
                     stale += 1
                 history.append(dict(epoch=epoch+1, loss=float(totals[0]/seen), source_ce=float(totals[1]/seen),
                     source_rank=float(totals[2]/seen), feature_consistency=float(totals[3]/seen),
+                    **({'adversary_bce': float(totals[4]/seen)} if discriminator is not None else {}),
                     source_paths_sha256=evaluation.key(sampled.crop_path.tolist()), source_batches_sha256=evaluation.key(batches),
                     validation=values))
                 state = dict(identity=identity, config=config, model_state_dict=model.state_dict(), optimizer=optimizer.state_dict(),
-                    epoch=epoch+1, stale=stale, history=history, best=best, anchor=anchor)
+                    epoch=epoch+1, stale=stale, history=history, best=best, anchor=anchor,
+                    **({'discriminator': discriminator.state_dict()} if discriminator is not None else {}))
                 if improved:
                     base.common.save(run/'best.pt', {k: state[k] for k in ['identity', 'config', 'model_state_dict', 'epoch']}
                         | dict(best=best, validation=values))
@@ -292,12 +349,13 @@ def train(args):
                 del state
                 base.common.json_write(run/'history.json', history)
                 print(f'CE={history[-1]["source_ce"]:.4f} rank={history[-1]["source_rank"]:.4f} fc={history[-1]["feature_consistency"]:.4f} '
+                      f'adv_bce={history[-1].get("adversary_bce", 0):.4f} '
                       f'| FF++ val pooled={values["pooled_auc"]:.4f} strong real/normal fake={values["strong_real_vs_normal_fake_auc"]:.4f} '
                       f'| best={best["pooled_auc"]:.4f} patience={stale}/{args.patience}', flush=True)
             selected = torch.load(run/'best.pt', map_location='cpu', weights_only=True)['epoch']
             base.common.json_write(run/'completed.json', dict(identity=identity, epochs_completed=len(history),
                 selected_epoch=selected, best=best))
-            del model, optimizer, parameters, groups, head
+            del model, optimizer, parameters, groups, head, discriminator
             if args.device == 'cuda':
                 torch.cuda.empty_cache()
         del initial
@@ -331,6 +389,10 @@ def parse_args(argv=None):
         p.add_argument('--'+field, type=float, default=default)
     p.add_argument('--fc-weights', nargs='+', type=float, default=[1.], help='lambda(s) of the feature-consistency term')
     p.add_argument('--fc-ramp-epochs', type=float, default=0., help='linear lambda warm-up length in epochs (0 = none)')
+    p.add_argument('--adv-weights', nargs='+', type=float, default=[1.], help='beta(s) of the adversarial trace-removal term')
+    p.add_argument('--adv-ramp-epochs', type=float, default=2., help='linear beta warm-up length in epochs (0 = none)')
+    p.add_argument('--adv-lr', type=float, default=1e-3, help='learning rate of the training-only discriminator')
+    p.add_argument('--proj-ks', nargs='+', type=int, default=[4], help='aug_pair_rank_proj: number of removed trace directions')
     p.add_argument('--replace-runs', nargs='*', default=[], help='run labels to retrain when their settings changed (old run kept as *_replaced_<time>)')
     p.add_argument('--device', choices=['cuda', 'cpu'], default='cuda')
     a = p.parse_args(argv)
