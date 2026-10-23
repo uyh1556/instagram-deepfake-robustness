@@ -166,6 +166,33 @@ class CacheAndEvaluationTests(unittest.TestCase):
         self.assertFalse(protocol['test_used_for_selection'])
         self.assertEqual(protocol['cache_identity']['dataset'], 'cdf_test')
 
+    def test_cdf_dev_refuses_official_test_and_evaluates(self):
+        a = self.args
+        write_calibration(self.root/'calibration.json')
+        rng = np.random.default_rng(5)
+        rows = []
+        for y in [0, 1]:
+            for i in range(6):
+                path = f'dev_{y}_{i}.png'
+                Image.fromarray(rng.integers(0, 256, (24, 24, 3), dtype=np.uint8)).save(a.target_root/path)
+                rows.append(dict(crop_path=path, video_id=f'dev_{y}_{i//2}', class_index=str(y), partition='adapt_val',
+                                 roi_status='detected' if i else 'fallback_letterbox'))
+        membership = self.root/'membership_labelled.csv'
+        pd.DataFrame(rows).to_csv(membership, index=False)
+        with patch.object(v2, 'SkinParser', FakeParser), patch.object(v2, 'full', side_effect=fake_full):
+            with self.assertRaisesRegex(ValueError, 'needs --membership'):
+                builder.build(self.cache_args('cdf_dev', a.target_root))
+            leaked = self.root/'leaked.csv'
+            test_row = pd.read_csv(self.test, dtype=str).iloc[[0]].assign(partition='adapt_val')
+            pd.concat([pd.DataFrame(rows), test_row]).to_csv(leaked, index=False)
+            with self.assertRaisesRegex(ValueError, 'overlaps the official test'):
+                builder.build(self.cache_args('cdf_dev', a.target_root, membership=leaked))
+            builder.build(self.cache_args('cdf_dev', a.target_root, membership=membership))
+        self.assertEqual(len(list((self.root/'cache_v2/cdf_dev/mask').rglob('*.png'))), 10)
+        table = evaluation.evaluate(self.eval_args('cdf_dev', a.target_root, membership=membership, models=['xception']))
+        self.assertEqual(len(table), len(v2.FILTERS))
+        self.assertEqual(json.loads((self.root/'eval_cdf_dev/protocol.json').read_text())['dataset'], 'cdf_dev')
+
     def test_ffpp_test_in_domain(self):
         a = self.args
         write_calibration(self.root/'calibration.json')

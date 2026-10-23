@@ -1,7 +1,8 @@
 """Score checkpoints on a test set under the v2 beauty-smoothing protocol (inference only).
 
---dataset cdf_test (Celeb-DF v2 official test, cross-dataset) or ffpp_test (FF++ c23 4-method test, in-domain: the
-smoothing shift without the CDF domain gap).
+--dataset cdf_test (Celeb-DF v2 official test, cross-dataset), ffpp_test (FF++ c23 4-method test, in-domain: the
+smoothing shift without the CDF domain gap) or cdf_dev (CDF pool-v2 labelled non-test frames, for method development so
+the official test is looked at only once, after the method is fixed).
 
 For every v2 filter (bilateral, weighted median, fast global, domain transform) and strength (weak/medium/strong
 = .25/.5/.75 inside the face-parsing skin mask), from the precomputed cdf_test cache (build_beauty_smoothing_v2_cache.py,
@@ -21,6 +22,7 @@ from torch.utils.data import Dataset
 
 import analyze_smoothing_threshold_shift as shift
 import beauty_smoothing_v2 as v2
+import build_beauty_smoothing_v2_cache as builder
 import ffpp_c23_smoothing_source_ablation as ablation
 
 engine, base, evaluation = ablation.engine, ablation.base, ablation.evaluation
@@ -66,6 +68,9 @@ def test_inputs(args):
             protocol=args.protocol, cache_root=args.data_root, output_root=args.output_root, workers=args.workers)
         frame, _, provenance = evaluation.inputs(ea)
         return frame, provenance
+    if args.dataset == 'cdf_dev':
+        frame = builder.dev_frame(args.membership, args.data_root).reset_index(drop=True)
+        return frame, dict(manifest_sha256=base.common.digest(args.membership))
     manifest = args.data_root/'manifests/ffpp_c23_4methods_roi16_test_v1.csv'
     frame = pd.read_csv(manifest, dtype=str, keep_default_na=False)
     if not frame.split.eq('test').all() or frame.crop_path.duplicated().any() or set(frame.class_index) != {'0', '1'}:
@@ -137,7 +142,8 @@ def evaluate(args):
 
 def parse_args(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument('--dataset', choices=['cdf_test', 'ffpp_test'], default='cdf_test')
+    p.add_argument('--dataset', choices=['cdf_test', 'ffpp_test', 'cdf_dev'], default='cdf_test')
+    p.add_argument('--membership', type=Path, help='cdf_dev only: pool v2 membership_labelled.csv')
     for field in ['data-root', 'baseline-runs-root', 'archive-dir', 'output-root']:
         p.add_argument('--'+field, type=Path, required=True)
     p.add_argument('--cache-root', type=Path, default=Path('/content/beauty_smoothing_v2_cache'))

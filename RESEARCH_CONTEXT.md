@@ -699,3 +699,11 @@ v1(기하 타원 마스크 + bilateral, 피부 변화 약 2/255)은 육안으로
 - 코드: scripts/beauty_smoothing_v2.py(프로토콜·파서·캐시 리더), build_beauty_smoothing_v2_cache.py(데이터셋 cdf_test/ffpp_test/ffpp_trainval; mask + 필터 4개를 섞기 전 100%로 부분마다 Drive tar 하나, 재개·복원), evaluate_beauty_smoothing_v2.py(cdf_test 또는 ffpp_test, 현재 Baseline만, 원본 1회 + 필터 4×3강도). prepare_ffpp_c23_training_data.py에 --test-only 추가(기존 동작 불변). v1 코드·결과는 변경하지 않음.
 - 노트북: calibrate_beauty_smoothing_v2 → build_beauty_smoothing_v2_cache(cdf_test·ffpp_test 먼저, ffpp_trainval은 병렬) → evaluate_beauty_smoothing_v2_baseline_seed42(모델별). tests/test_beauty_smoothing_v2.py(가짜 파서·필터) 통과, 실제 파서·contrib 필터로 CDF 8장 캐시 생성·tar 확인. GPU 실행은 아직 없음.
 - 계획: Baseline v2 평가에서 쏠림 확인(관문) → 대각선 학습 aug_single/aug_pair/aug_pair_rank × 필터 4 × 백본 3 = 36 run(seed42), best epoch는 FF++ val 원본+학습 필터 k pooled AUC, 각 모델을 필터 4개 모두로 평가해 4×4 표. clean_only는 주 실험에서 제외(v1에서 추가 학습만으로 격차가 줄지 않음을 이미 보임). FF++ test(같은 도메인) 평가도 Baseline부터 포함: CDF 도메인 차이 없이 스무딩만의 영향을 분리.
+
+## 새 학습법 개발 순서와 D1 진단·CDF 개발 세트 (2026-10-23)
+사용자 결정: Baseline v2 평가 뒤 대각선 전에 새 학습법을 먼저 구상·파일럿하고, 괜찮으면 그 방법을 포함해 대각선(필터 4 × 조건 4 × 백본 3)을 만든다.
+근거: 점수 손실(CE/pair/rank)은 "스무딩 흔적이 보이면 점수를 깎는" 덧셈 보정으로도 만족되므로, 특징 공간에서 스무딩 흔적을 지우는 방법(특징 일관성, 특징 스무딩 판별기 적대 학습, 여러 필터 혼합)이 후보. CLIP은 v1 대각선에서도 28%만 해결.
+- 방법 선택에 CDF 공식 test를 쓰지 않기 위해 cdf_dev 추가: pool v2 membership_labelled.csv(라벨 있는 비테스트, adapt-train+adapt-val), 공식 test 영상과 겹치면 중단. 개발 비교는 cdf_dev + ffpp_test로만 하고 공식 test는 방법 확정 후 대각선에서 한 번. 주의: 이후 adapt-train을 학습에 쓰는 방법은 cdf_dev와 겹치므로 별도 분할 필요.
+- 파일럿: bilateral(v2) 행만 aug_single/aug_pair/aug_pair_rank/새 방법 × CLIP·Xception, 대각선과 같은 설정으로 두어 run을 재사용.
+- D1(scripts/diagnose_smoothing_feature_probe.py, 노트북 diagnose_smoothing_feature_probe): v1 ablation 체크포인트, FF++ val 1,200장, 원본 vs v1 스무딩 강(bilateral + held-out 3개)의 분류 직전 특징으로 영상 단위 5겹 선형 프로브(스무딩 감지 AUC), bilateral 프로브의 다른 필터 전이 AUC, 특징 이동량, 점수 이동. 예측: 보정이면 증강 모델의 감지 AUC가 높게 유지되고 DT에서 bilateral 프로브가 켜지며 점수가 진짜 쪽으로 이동. 테스트 미사용, GPU 실행 전.
+- 연구 목표 정리(사용자 질문): "강건한 탐지"의 성능 지표는 스무딩된 상황의 판별력(교차 AUC, 특히 두 방향 중 나쁜 쪽)이고, 원본 CDF AUC 향상은 도메인 적응 문제라 주 목표가 아니다(원본 AUC는 유지 조건).
