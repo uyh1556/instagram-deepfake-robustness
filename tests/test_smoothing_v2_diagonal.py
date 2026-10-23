@@ -122,7 +122,7 @@ class DiagonalTests(unittest.TestCase):
         e = argparse.Namespace(dataset='cdf_test', data_root=self.args.target_root, baseline_runs_root=self.args.baseline_runs_root,
             archive_dir=self.root/'drive', output_root=self.root/'eval', cache_root=self.root/'cache_eval', protocol=self.args.protocol,
             models=['dinov2_b14'], seed=42, baseline_seed=42, eval_batch_size=4, workers=0, device='cpu',
-            runs_root=t.runs_root, train_filters=['bilateral'], strategies=list(diagonal.STRATEGIES), fc_weights=[1.], fc_ramp_epochs=0., membership=None)
+            runs_root=t.runs_root, train_filters=['bilateral'], strategies=list(diagonal.STRATEGIES), fc_weights=[1.], fc_ramp_epochs=0., membership=None, checkpoint='best')
         table = evaluation.evaluate(e)
         self.assertEqual(len(table), (1+len(diagonal.STRATEGIES))*len(v2.FILTERS))
         trained = table[table.method.ne('baseline')]
@@ -130,6 +130,12 @@ class DiagonalTests(unittest.TestCase):
         self.assertEqual(set(trained[trained['filter'].eq('bilateral')].held_out), {False})
         self.assertEqual(set(trained[trained['filter'].ne('bilateral')].held_out), {True})
         self.assertFalse(table[table.method.eq('baseline')].held_out.any())
+        # last.pt diagnostic goes to its own summary file and labels; best.pt summary is untouched.
+        before = (e.output_root/'summary.csv').read_bytes()
+        last = evaluation.evaluate(argparse.Namespace(**{**vars(e), 'checkpoint': 'last', 'strategies': ['aug_pair_rank']}))
+        self.assertTrue(last.strategy[last.method.ne('baseline')].str.contains('#last_epoch').all())
+        self.assertTrue((e.output_root/'summary_last_diagnostic.csv').is_file())
+        self.assertEqual(before, (e.output_root/'summary.csv').read_bytes())
 
         # Strength curve from the saved predictions only (no model is built).
         with patch.object(evaluation.base, 'build_model', side_effect=AssertionError('inference')):

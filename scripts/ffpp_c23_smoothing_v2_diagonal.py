@@ -303,14 +303,16 @@ def train(args):
         del initial
 
 
-def completed_checkpoint(runs_root, name, train_filter, label, seed, initial_hash):
-    """(state_dict, best.pt digest, selected epoch) of a completed run started from this baseline."""
+def completed_checkpoint(runs_root, name, train_filter, label, seed, initial_hash, which='best'):
+    """(state_dict, digest, epoch) of a completed run started from this baseline. which='last' (last.pt, the final
+    trained epoch) is a DIAGNOSTIC only, e.g. when best.pt fell back to epoch 0; it is never the reported model."""
     run = Path(runs_root)/run_name(name, train_filter, label, seed)
     done = json.loads((run/'completed.json').read_text())
-    state = torch.load(run/'best.pt', map_location='cpu', weights_only=True)
+    path = run/f'{which}.pt'
+    state = torch.load(path, map_location='cpu', weights_only=True)
     if state['identity'] != done['identity'] or state['config']['initial_checkpoint_sha256'] != initial_hash:
         raise ValueError(f'Checkpoint mismatch: {run}')
-    return state['model_state_dict'], base.common.digest(run/'best.pt'), state['epoch']
+    return state['model_state_dict'], base.common.digest(path), state['epoch']
 
 
 def parse_args(argv=None):
