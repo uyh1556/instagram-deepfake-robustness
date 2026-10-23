@@ -734,3 +734,9 @@ FF++ val(동일 도메인, 원본 AUC .94~.99로 천장 근처라 AUC 격차보�
 - 비용: 원본 AUC 하락. 상당 부분은 1,200장 로지스틱 재학습 자체(refit: CLIP .942→.932/.940→.899, DINO .955→.941/.953→.939). 재학습 대비 추가 손실은 Xception -.007~-.012, CLIP ~0, DINO k4는 오히려 +.007.
 - 제거 후 감지 AUC는 줄지만 0.5까지는 아님(Xception rank .913→.724 k4, .606 k16) → 흔적이 다차원·일부 비선형.
 함의: 특징 단계 흔적 제거가 보정을 끊고 처음 보는 필터에도 부분적으로 일반화. 학습법 A는 이를 학습 중에 전체 데이터로 하는 형태(후보 1 특징 일관성, 또는 방향 제거를 학습에 통합)로, FGS처럼 다른 방향을 가진 필터는 남는 과제. 한계: FF++ val, 작은 재학습 표본, seed42, v1 스무딩.
+
+## v2 Baseline 결과와 대각선 학습 코드·λ 파일럿 (2026-10-24)
+v2 Baseline CDF test max|gap|(방향) bilateral/WMF/FGS/DT: CLIP .29/.31/.31/.23(모두 오탐 방향, FP 뒤집힘 23~33%), Xception .24/.10/.37/.09(DT만 미탐 방향: FN 뒤집힘 11%, FGS FP 뒤집힘 45%), DINO .06/.07/.27/.14(DT 미탐 방향 FN 11.6%). CLIP FF++ test(같은 도메인) FP gap .13~.22, FP 뒤집힘 19~33% → 도메인 차이와 무관한 스무딩 쏠림. 방향은 필터·백본에 따라 다름(DT는 합성 흔적 세탁 가설). Xception/DINO FF++ test 기록은 결과 확인 후.
+v2 캐시 20개 tar 완료(ffpp_trainval 62,418장 34.8GB, ffpp_test 11,058, cdf_test 7,999, cdf_dev).
+학습 코드 scripts/ffpp_c23_smoothing_v2_diagonal.py: 필터 k의 v2 캐시(mask+k만 풀기)로 source ablation과 같은 표본·배치·flip·강도 추첨·선택 규칙(FF++ val 원본+k 약중강 pooled AUC). 조건 aug_single/aug_pair/aug_pair_rank/aug_pair_rank_fc(학습법 A: rank + λ·(1−cos(f_smooth, stopgrad f_clean)), 분류기 입력 특징, 검출 프레임만). λ마다 run 이름 aug_pair_rank_fc<λ>. 모든 seed가 baseline seed42에서 출발(--baseline-seed), 에폭 표본 CSV는 seed별 폴더. 평가는 evaluate_beauty_smoothing_v2.py --runs-root로 strategy@train_filter 라벨, held_out 표시. 노트북 train_eval_ffpp_c23_smoothing_v2_diagonal(파일럿·본 실험 공용, 끝난 run 재사용).
+파일럿(사용자 결정): bilateral, CLIP·Xception, seed42, aug_pair_rank + rank+일관성 λ∈{1,10,100}, cdf_dev만 평가. A가 rank 대비 처음 보는 필터 쏠림을 줄이고 원본 AUC를 유지하는 λ를 고른 뒤 본 실험(필터 4 × 조건 4 × 백본 3 × seed 3)에 그 λ만 사용.

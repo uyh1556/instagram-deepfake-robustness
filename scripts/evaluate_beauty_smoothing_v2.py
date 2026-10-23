@@ -6,13 +6,12 @@ the official test is looked at only once, after the method is fixed).
 
 For every v2 filter (bilateral, weighted median, fast global, domain transform) and strength (weak/medium/strong
 = .25/.5/.75 inside the face-parsing skin mask), from the precomputed cdf_test cache (build_beauty_smoothing_v2_cache.py,
-restored from its Drive tars) of that dataset. Currently the FF++ c23 baselines; the original (normal) condition is inferred once per
-checkpoint. Per (checkpoint, filter): fp_gap / fn_gap / max|gap|, cross AUCs, skew, flips and paired shifts
+restored from its Drive tars) of that dataset. Checkpoints: the FF++ c23 baseline, plus (with --runs-root) the completed
+v2 diagonal runs (ffpp_c23_smoothing_v2_diagonal.py) for every --train-filters x --strategies, labelled strategy@train_filter.
+The original (normal) condition is inferred once per checkpoint. Per (checkpoint, filter): fp_gap / fn_gap / max|gap|, cross AUCs, skew, flips and paired shifts
 (analyze_smoothing_threshold_shift.measure). Test labels only score; nothing is selected on the test.
 """
 import argparse
-import json
-import subprocess
 from pathlib import Path
 
 import pandas as pd
@@ -24,6 +23,7 @@ import analyze_smoothing_threshold_shift as shift
 import beauty_smoothing_v2 as v2
 import build_beauty_smoothing_v2_cache as builder
 import ffpp_c23_smoothing_source_ablation as ablation
+import ffpp_c23_smoothing_v2_diagonal as diagonal
 
 engine, base, evaluation = ablation.engine, ablation.base, ablation.evaluation
 ROOT = Path(__file__).resolve().parents[1]
@@ -47,19 +47,7 @@ class V2Views(Dataset):
 
 
 def ready_cache(args):
-    cache = v2.SmoothingCache(args.cache_root, args.dataset)
-    for part in cache.PARTS:
-        archive = args.archive_dir/f'{args.dataset}_{part}.tar'
-        if not (cache.root/part/'complete.json').is_file():
-            if not archive.is_file():
-                raise FileNotFoundError(f'Build the {args.dataset} v2 cache first: {archive}')
-            print('Restoring', archive, flush=True)
-            cache.root.mkdir(parents=True, exist_ok=True)
-            subprocess.run(['tar', '-xf', str(archive), '-C', str(cache.root)], check=True)
-    ident = cache.check()
-    if ident['protocol'] != v2.PROTOCOL or ident['dataset'] != args.dataset:
-        raise ValueError(f'Not a v2 {args.dataset} cache')
-    return cache
+    return diagonal.restore_cache(args.cache_root, args.archive_dir, args.dataset, v2.SmoothingCache.PARTS)
 
 
 def test_inputs(args):
@@ -82,8 +70,14 @@ def test_inputs(args):
 
 
 def checkpoints(args, name):
-    initial, initial_hash = evaluation.checkpoint(argparse.Namespace(runs_root=args.baseline_runs_root, seed=args.seed), name)
-    return [('baseline', initial['model_state_dict'], initial_hash)]
+    initial, initial_hash = evaluation.checkpoint(argparse.Namespace(runs_root=args.baseline_runs_root, seed=args.baseline_seed), name)
+    out = [('baseline', None, None, initial['model_state_dict'], initial_hash)]
+    if args.runs_root is not None:
+        for train_filter in args.train_filters:
+            for label, _, _ in diagonal.variants(args.strategies, args.fc_weights):
+                weights, digest, _ = diagonal.completed_checkpoint(args.runs_root, name, train_filter, label, args.seed, initial_hash)
+                out.append((f'{label}@{train_filter}', train_filter, label, weights, digest))
+    return out
 
 
 def predict(args, frame, name, label, weights, checkpoint_hash, cache, filt, condition, strength, state):
@@ -114,7 +108,7 @@ def evaluate(args):
     labels = frame.class_index.astype(int).to_numpy()
     rows = []
     for name in args.models:
-        for label, weights, checkpoint_hash in checkpoints(args, name):
+        for label, train_filter, strategy, weights, checkpoint_hash in checkpoints(args, name):
             state = {}
             normal = predict(args, frame, name, label, weights, checkpoint_hash, cache, None, 'normal', 0, state)
             for filt in v2.FILTERS:
@@ -122,7 +116,8 @@ def evaluate(args):
                 for condition, strength in v2.LEVELS.items():
                     margins[condition] = predict(args, frame, name, label, weights, checkpoint_hash, cache, filt, condition, strength, state)
                 measured = shift.measure(labels, margins)
-                rows.append(dict(model=name, strategy=label, filter=filt, **measured,
+                rows.append(dict(model=name, strategy=label, train_filter=train_filter, method=strategy or 'baseline',
+                                 filter=filt, held_out=train_filter is not None and filt != train_filter, **measured,
                                  max_gap=max(abs(measured['fp_gap']), abs(measured['fn_gap']))))
             state.clear()
             if args.device == 'cuda':
@@ -130,7 +125,7 @@ def evaluate(args):
     table = pd.DataFrame(rows)
     table.to_csv(args.output_root/'summary.csv', index=False)
     base.common.json_write(args.output_root/'protocol.json', dict(protocol=v2.PROTOCOL, experiment=EXPERIMENT,
-        dataset=args.dataset, manifest_sha256=provenance['manifest_sha256'], cache_identity=cache.identity, levels=v2.LEVELS,
+        dataset=args.dataset, seed=args.seed, train_filters=args.train_filters, strategies=args.strategies, fc_weights=args.fc_weights, manifest_sha256=provenance['manifest_sha256'], cache_identity=cache.identity, levels=v2.LEVELS,
         test_used_for_selection=False))
     with pd.option_context('display.width', 250, 'display.max_columns', 20):
         for metric in ['normal_auc', 'fp_gap', 'fn_gap', 'max_gap', 'fp_flip@normal5', 'fn_flip@normal5']:
@@ -147,9 +142,13 @@ def parse_args(argv=None):
     for field in ['data-root', 'baseline-runs-root', 'archive-dir', 'output-root']:
         p.add_argument('--'+field, type=Path, required=True)
     p.add_argument('--cache-root', type=Path, default=Path('/content/beauty_smoothing_v2_cache'))
+    p.add_argument('--runs-root', type=Path, help='v2 diagonal runs of this model; omit to score the baseline only')
+    p.add_argument('--train-filters', nargs='+', choices=v2.FILTERS, default=[])
+    p.add_argument('--strategies', nargs='+', choices=diagonal.STRATEGIES, default=diagonal.STRATEGIES)
+    p.add_argument('--fc-weights', nargs='+', type=float, default=[1.])
     p.add_argument('--protocol', type=Path, default=ROOT/'configs/ffpp_c23_celebdf_smoothing_v1.json')  # CDF test counts only
     p.add_argument('--models', nargs='+', choices=list(base.PREPROCESS), default=['dinov2_b14'])
-    for field, default in [('seed', 42), ('eval-batch-size', 64), ('workers', 2)]:
+    for field, default in [('seed', 42), ('baseline-seed', 42), ('eval-batch-size', 64), ('workers', 2)]:
         p.add_argument('--'+field, type=int, default=default)
     p.add_argument('--device', choices=['cuda', 'cpu'], default='cuda')
     a = p.parse_args(argv)

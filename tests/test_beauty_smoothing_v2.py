@@ -119,7 +119,8 @@ class CacheAndEvaluationTests(unittest.TestCase):
         a = self.args
         values = dict(dataset=dataset, data_root=data_root, baseline_runs_root=a.baseline_runs_root,
                       archive_dir=self.root/'drive', output_root=self.root/f'eval_{dataset}', cache_root=self.root/'cache_eval',
-                      protocol=a.protocol, models=['dinov2_b14', 'xception'], seed=42, eval_batch_size=4, workers=0, device='cpu')
+                      protocol=a.protocol, models=['dinov2_b14', 'xception'], seed=42, baseline_seed=42, eval_batch_size=4, workers=0,
+                      device='cpu', runs_root=None, train_filters=[], strategies=[], fc_weights=[1.])
         return argparse.Namespace(**{**values, **extra})
 
     def test_build_restore_and_evaluate(self):
