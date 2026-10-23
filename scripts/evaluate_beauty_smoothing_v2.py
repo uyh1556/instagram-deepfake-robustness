@@ -74,7 +74,7 @@ def checkpoints(args, name):
     out = [('baseline', None, None, initial['model_state_dict'], initial_hash)]
     if args.runs_root is not None:
         for train_filter in args.train_filters:
-            for label, _, _ in diagonal.variants(args.strategies, args.fc_weights):
+            for label, _, _ in diagonal.variants(args.strategies, args.fc_weights, args.fc_ramp_epochs):
                 weights, digest, _ = diagonal.completed_checkpoint(args.runs_root, name, train_filter, label, args.seed, initial_hash)
                 out.append((f'{label}@{train_filter}', train_filter, label, weights, digest))
     return out
@@ -125,7 +125,7 @@ def evaluate(args):
     table = pd.DataFrame(rows)
     table.to_csv(args.output_root/'summary.csv', index=False)
     base.common.json_write(args.output_root/'protocol.json', dict(protocol=v2.PROTOCOL, experiment=EXPERIMENT,
-        dataset=args.dataset, seed=args.seed, train_filters=args.train_filters, strategies=args.strategies, fc_weights=args.fc_weights, manifest_sha256=provenance['manifest_sha256'], cache_identity=cache.identity, levels=v2.LEVELS,
+        dataset=args.dataset, seed=args.seed, train_filters=args.train_filters, strategies=args.strategies, fc_weights=args.fc_weights, fc_ramp_epochs=args.fc_ramp_epochs, manifest_sha256=provenance['manifest_sha256'], cache_identity=cache.identity, levels=v2.LEVELS,
         test_used_for_selection=False))
     with pd.option_context('display.width', 250, 'display.max_columns', 20):
         for metric in ['normal_auc', 'fp_gap', 'fn_gap', 'max_gap', 'fp_flip@normal5', 'fn_flip@normal5']:
@@ -146,6 +146,7 @@ def parse_args(argv=None):
     p.add_argument('--train-filters', nargs='+', choices=v2.FILTERS, default=[])
     p.add_argument('--strategies', nargs='+', choices=diagonal.STRATEGIES, default=diagonal.STRATEGIES)
     p.add_argument('--fc-weights', nargs='+', type=float, default=[1.])
+    p.add_argument('--fc-ramp-epochs', type=float, default=0.)
     p.add_argument('--protocol', type=Path, default=ROOT/'configs/ffpp_c23_celebdf_smoothing_v1.json')  # CDF test counts only
     p.add_argument('--models', nargs='+', choices=list(base.PREPROCESS), default=['dinov2_b14'])
     for field, default in [('seed', 42), ('baseline-seed', 42), ('eval-batch-size', 64), ('workers', 2)]:

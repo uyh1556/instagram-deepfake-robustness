@@ -13,6 +13,8 @@ v2 스무딩(파싱 피부 마스크 + 경계 보존 필터 4개)으로 **필터
   방법 개발(파일럿) 동안은 `cdf_dev`(CDF 비테스트)와 `ffpp_test`만 본다. **`cdf_test`(공식 test)는 방법을 확정한 뒤 본 실험에서 한 번만.**
 - **파일럿(λ 정하기):** `MODELS`=CLIP 또는 Xception, `TRAIN_FILTERS=['bilateral']`, `SEEDS=[42]`, `STRATEGIES=['aug_pair_rank','aug_pair_rank_fc']`,
   `FC_WEIGHTS=[1,10,100]`(λ마다 run 하나: `aug_pair_rank_fc1/10/100`), `EVAL_DATASETS=['cdf_dev']`. 백본당 4 run.
+- **Xception λ 워밍업 재시도(2026-10-24):** `MODELS=['xception']`, `STRATEGIES=['aug_pair_rank','aug_pair_rank_fc']`, `FC_WEIGHTS=[100]`, `FC_RAMP=2`, `EVAL_DATASETS=['cdf_dev']`.
+  rank는 끝난 run을 건너뛰고, 새로 학습하는 건 `aug_pair_rank_fc100_ramp2` 하나.
 - **본 실험:** 고른 λ 하나로 `FC_WEIGHTS=[λ]`, 전략 4개, `TRAIN_FILTERS` 4개, `SEEDS=[42,43,44]`, 세 백본, 마지막에 `cdf_test` 추가. 파일럿 run은 그대로 재사용.
 - 런타임: GPU(L4/A100). 학습용 캐시는 학습 필터와 마스크 tar만 푼다(필터 하나 약 9GB).
 
@@ -43,6 +45,7 @@ MODELS=['clip_b16']                    # 노트북마다 하나: ['xception'] / 
 TRAIN_FILTERS=['bilateral']            # 본 실험: ['bilateral','weighted_median','fast_global','domain_transform']
 STRATEGIES=['aug_pair_rank','aug_pair_rank_fc']   # 본 실험: ['aug_single','aug_pair','aug_pair_rank','aug_pair_rank_fc']
 FC_WEIGHTS=[1,10,100]                  # 일관성 λ 후보 (본 실험: 고른 λ 하나)
+FC_RAMP=0                              # λ 워밍업 epoch 수(처음 FC_RAMP epoch 동안 0→λ). 0이면 없음. 워밍업 run 이름: aug_pair_rank_fc<λ>_ramp<R>
 SEEDS=[42]                             # 본 실험: [42,43,44]
 EVAL_DATASETS=['cdf_dev']              # 공식 test 'cdf_test'는 방법 확정 후에만 추가
 assert len(MODELS)==1,'동시 실행 시 노트북마다 모델 하나'
@@ -97,7 +100,7 @@ if 'cdf_dev' in EVAL_DATASETS:
 ```python
 for seed in SEEDS:
     for f in TRAIN_FILTERS:
-        !python -u "{PROJECT}/scripts/ffpp_c23_smoothing_v2_diagonal.py" --source-root "{FF_ROOT}" --baseline-runs-root "{ROOT}/runs/ffpp_c23_4methods_baseline_v1" --runs-root "{RUNS}" --manifest-root "{MANIFESTS}" --archive-dir "{ARCHIVE}" --train-filter {f} --models {GROUP} --strategies {' '.join(STRATEGIES)} --fc-weights {' '.join(map(str,FC_WEIGHTS))} --seed {seed} --epochs 10 --patience 3 --source-images 6000 --val-images 1200 --batch-size 16 --workers 2
+        !python -u "{PROJECT}/scripts/ffpp_c23_smoothing_v2_diagonal.py" --source-root "{FF_ROOT}" --baseline-runs-root "{ROOT}/runs/ffpp_c23_4methods_baseline_v1" --runs-root "{RUNS}" --manifest-root "{MANIFESTS}" --archive-dir "{ARCHIVE}" --train-filter {f} --models {GROUP} --strategies {' '.join(STRATEGIES)} --fc-weights {' '.join(map(str,FC_WEIGHTS))} --fc-ramp-epochs {FC_RAMP} --seed {seed} --epochs 10 --patience 3 --source-images 6000 --val-images 1200 --batch-size 16 --workers 2
         assert _exit_code==0,f'학습 실패 (seed {seed}, {f}): 위 오류 확인 후 다시 실행'
 ```
 
@@ -107,7 +110,7 @@ for seed in SEEDS:
 for seed in SEEDS:
     for d in EVAL_DATASETS:
         extra=f'--membership "{MEMBERSHIP}"' if d=='cdf_dev' else ''
-        !python -u "{PROJECT}/scripts/evaluate_beauty_smoothing_v2.py" --dataset {d} {extra} --data-root "{DATA_ROOT[d]}" --baseline-runs-root "{ROOT}/runs/ffpp_c23_4methods_baseline_v1" --archive-dir "{ARCHIVE}" --output-root "{EVAL}/seed{seed}/{d}" --models {GROUP} --runs-root "{RUNS}" --train-filters {' '.join(TRAIN_FILTERS)} --strategies {' '.join(STRATEGIES)} --fc-weights {' '.join(map(str,FC_WEIGHTS))} --seed {seed} --eval-batch-size 64 --workers 2
+        !python -u "{PROJECT}/scripts/evaluate_beauty_smoothing_v2.py" --dataset {d} {extra} --data-root "{DATA_ROOT[d]}" --baseline-runs-root "{ROOT}/runs/ffpp_c23_4methods_baseline_v1" --archive-dir "{ARCHIVE}" --output-root "{EVAL}/seed{seed}/{d}" --models {GROUP} --runs-root "{RUNS}" --train-filters {' '.join(TRAIN_FILTERS)} --strategies {' '.join(STRATEGIES)} --fc-weights {' '.join(map(str,FC_WEIGHTS))} --fc-ramp-epochs {FC_RAMP} --seed {seed} --eval-batch-size 64 --workers 2
         assert _exit_code==0,f'평가 실패 (seed {seed}, {d})'
 ```
 
@@ -146,6 +149,6 @@ for seed in SEEDS:
         !python -u "{PROJECT}/scripts/diagnose_v2_compensation.py" curve --eval-root "{EVAL}/seed{seed}/{d}"
         assert _exit_code==0,'강도 곡선 실패'
     for f in TRAIN_FILTERS:
-        !python -u "{PROJECT}/scripts/diagnose_v2_compensation.py" probe --source-root "{FF_ROOT}" --baseline-runs-root "{ROOT}/runs/ffpp_c23_4methods_baseline_v1" --runs-root "{RUNS}" --archive-dir "{ARCHIVE}" --output-root "{EVAL}/trace_probe" --train-filter {f} --models {GROUP} --strategies {' '.join(STRATEGIES)} --fc-weights {' '.join(map(str,FC_WEIGHTS))} --seed {seed} --images 1200 --batch-size 64 --workers 2
+        !python -u "{PROJECT}/scripts/diagnose_v2_compensation.py" probe --source-root "{FF_ROOT}" --baseline-runs-root "{ROOT}/runs/ffpp_c23_4methods_baseline_v1" --runs-root "{RUNS}" --archive-dir "{ARCHIVE}" --output-root "{EVAL}/trace_probe" --train-filter {f} --models {GROUP} --strategies {' '.join(STRATEGIES)} --fc-weights {' '.join(map(str,FC_WEIGHTS))} --fc-ramp-epochs {FC_RAMP} --seed {seed} --images 1200 --batch-size 64 --workers 2
         assert _exit_code==0,'흔적 프로브 실패'
 ```

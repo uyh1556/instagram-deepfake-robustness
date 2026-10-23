@@ -46,7 +46,7 @@ class DiagonalTests(unittest.TestCase):
                       cache_root=self.root/'cache_train', train_filter='bilateral', models=['dinov2_b14'],
                       strategies=list(diagonal.STRATEGIES), seed=42, baseline_seed=42, epochs=2, patience=3, source_images=16,
                       val_images=16, batch_size=4, workers=0, encoder_lr=1e-4, head_lr=1e-4, weight_decay=1e-4,
-                      ranking_weight=.25, fc_weights=[1.], device='cpu')
+                      ranking_weight=.25, fc_weights=[1.], fc_ramp_epochs=0., device='cpu')
         return argparse.Namespace(**{**values, **extra})
 
     def build_caches(self):
@@ -79,6 +79,15 @@ class DiagonalTests(unittest.TestCase):
             with patch.object(diagonal, 'PairedV2', side_effect=AssertionError('retrained')), \
                     patch.object(diagonal.engine.metadata, 'version', return_value='9.9.9'):
                 diagonal.train(self.train_args(strategies=['aug_pair_rank', 'aug_pair_rank_fc']))
+            # Warm-up runs get their own label/config; the earlier (no warm-up) fc run and rank run stay reused.
+            r = self.train_args(strategies=['aug_pair_rank', 'aug_pair_rank_fc'], fc_weights=[100.], fc_ramp_epochs=2.)
+            self.assertEqual([l for l, _, _ in diagonal.variants(r.strategies, r.fc_weights, r.fc_ramp_epochs)],
+                             ['aug_pair_rank', 'aug_pair_rank_fc100_ramp2'])
+            diagonal.train(r)
+            ramp_cfg = json.loads((r.runs_root/diagonal.run_name('dinov2_b14', 'bilateral', 'aug_pair_rank_fc100_ramp2', 42)/'config.json').read_text())
+            self.assertEqual((ramp_cfg['fc_weight'], ramp_cfg['fc_ramp_epochs']), (100., 2.))
+            self.assertNotIn('fc_ramp_epochs', json.loads((runs['aug_pair_rank_fc1']/'config.json').read_text()))
+            self.assertEqual([diagonal.ramp_scale(e, s, 4, 2.) for e, s in [(0, 0), (0, 2), (1, 0), (2, 0)]], [0., .25, .5, 1.])
             # fc_weight=0 reproduces aug_pair_rank exactly: the consistency term is the only difference.
             z = self.train_args(runs_root=self.root/'zero_runs', fc_weights=[0., 10.], strategies=['aug_pair_rank', 'aug_pair_rank_fc'])
             diagonal.train(z)
@@ -97,7 +106,7 @@ class DiagonalTests(unittest.TestCase):
         e = argparse.Namespace(dataset='cdf_test', data_root=self.args.target_root, baseline_runs_root=self.args.baseline_runs_root,
             archive_dir=self.root/'drive', output_root=self.root/'eval', cache_root=self.root/'cache_eval', protocol=self.args.protocol,
             models=['dinov2_b14'], seed=42, baseline_seed=42, eval_batch_size=4, workers=0, device='cpu',
-            runs_root=t.runs_root, train_filters=['bilateral'], strategies=list(diagonal.STRATEGIES), fc_weights=[1.], membership=None)
+            runs_root=t.runs_root, train_filters=['bilateral'], strategies=list(diagonal.STRATEGIES), fc_weights=[1.], fc_ramp_epochs=0., membership=None)
         table = evaluation.evaluate(e)
         self.assertEqual(len(table), (1+len(diagonal.STRATEGIES))*len(v2.FILTERS))
         trained = table[table.method.ne('baseline')]
@@ -118,7 +127,7 @@ class DiagonalTests(unittest.TestCase):
         with patch.object(v2, 'full', side_effect=v2_fixture.fake_full):
             pr = compensation.probe(argparse.Namespace(source_root=self.args.source_root, baseline_runs_root=self.args.baseline_runs_root,
                 runs_root=t.runs_root, archive_dir=self.root/'drive', cache_root=self.root/'cache_probe', output_root=self.root/'probe',
-                train_filter='bilateral', models=['dinov2_b14'], strategies=['aug_pair_rank', 'aug_pair_rank_fc'], fc_weights=[1.],
+                train_filter='bilateral', models=['dinov2_b14'], strategies=['aug_pair_rank', 'aug_pair_rank_fc'], fc_weights=[1.], fc_ramp_epochs=0.,
                 seed=42, baseline_seed=42, images=16, folds=2, batch_size=4, workers=0, device='cpu'))
         self.assertEqual(list(pr.strategy), ['baseline', 'aug_pair_rank@bilateral', 'aug_pair_rank_fc1@bilateral'])
         self.assertTrue(pr.probe_auc.between(0, 1).all() and (pr.feature_shift >= 0).all())

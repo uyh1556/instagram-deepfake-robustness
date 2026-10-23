@@ -64,7 +64,7 @@ def probe(args):
     for name in args.models:
         initial, initial_hash = evaluation.checkpoint(argparse.Namespace(runs_root=args.baseline_runs_root, seed=args.baseline_seed), name)
         states = [('baseline', initial['model_state_dict'])]
-        for label, _, _ in diagonal.variants(args.strategies, args.fc_weights):
+        for label, _, _ in diagonal.variants(args.strategies, args.fc_weights, args.fc_ramp_epochs):
             weights, _, _ = diagonal.completed_checkpoint(args.runs_root, name, args.train_filter, label, args.seed, initial_hash)
             states.append((f'{label}@{args.train_filter}', weights))
         for label, weights in states:
@@ -101,6 +101,7 @@ def parse_args(argv=None):
     p.add_argument('--models', nargs='+', choices=list(base.PREPROCESS), default=['clip_b16'])
     p.add_argument('--strategies', nargs='+', choices=diagonal.STRATEGIES, default=['aug_pair_rank', 'aug_pair_rank_fc'])
     p.add_argument('--fc-weights', nargs='+', type=float, default=[1.])
+    p.add_argument('--fc-ramp-epochs', type=float, default=0.)
     for field, default in [('seed', 42), ('baseline-seed', 42), ('images', 1200), ('folds', 5), ('batch-size', 64), ('workers', 2)]:
         p.add_argument('--'+field, type=int, default=default)
     p.add_argument('--device', choices=['cuda', 'cpu'], default='cuda')

@@ -11,6 +11,8 @@ the smoothing changes to v2 (face-parsing skin mask + one edge-preserving filter
                     amount whenever the smoothing trace is seen (D1, candidate 3); this pulls the smoothed features onto
                     the original ones so the trace itself disappears, while the original features stay the anchor.
                     One run per --fc-weights value (lambda), named aug_pair_rank_fc<lambda>, so the pilot can compare lambdas.
+                    --fc-ramp-epochs R > 0 raises lambda linearly from 0 over the first R epochs (per step) so the full network
+                    (Xception) is not shocked at epoch 1; such runs are named aug_pair_rank_fc<lambda>_ramp<R>.
 Selection (best.pt): FF++ val (1,200 frames) pooled raw-margin AUC over original + filter-k weak/medium/strong; no
 Celeb-DF frame is used for training or selection. Evaluation lives in evaluate_beauty_smoothing_v2.py.
 """
@@ -48,13 +50,19 @@ def run_name(model, train_filter, label, seed):
     return f'{model}_{train_filter}_{label}_{PROTOCOL}_seed{seed}'
 
 
-def variants(strategies, fc_weights):
-    """(label, strategy, lambda): aug_pair_rank_fc expands to one run per lambda (label aug_pair_rank_fc<lambda>)."""
+def variants(strategies, fc_weights, fc_ramp=0.):
+    """(label, strategy, lambda): aug_pair_rank_fc expands to one run per lambda (label aug_pair_rank_fc<lambda>[_ramp<R>])."""
     out = []
+    suffix = f'_ramp{fc_ramp:g}' if fc_ramp > 0 else ''
     for strategy in strategies:
-        out += ([(f'{strategy}{w:g}', strategy, float(w)) for w in fc_weights] if strategy == 'aug_pair_rank_fc'
+        out += ([(f'{strategy}{w:g}{suffix}', strategy, float(w)) for w in fc_weights] if strategy == 'aug_pair_rank_fc'
                 else [(strategy, strategy, 0.)])
     return out
+
+
+def ramp_scale(epoch, step, steps, ramp):
+    """Fraction of lambda at this step: linear 0 -> 1 over the first `ramp` epochs, then 1 (ramp 0 = always 1)."""
+    return 1. if ramp <= 0 else min(1., (epoch+step/steps)/ramp)
 
 
 def restore_cache(cache_root, archive_dir, dataset, parts):
@@ -120,7 +128,7 @@ def feature_consistency(features, n, detected):
     return ((1-cos)*mask).sum()/mask.sum().clamp_min(1.)
 
 
-def source_loss(strategy, name, model, clean, smooth, labels, detected, args, seed):
+def source_loss(strategy, name, model, clean, smooth, labels, detected, args, seed, fc_scale=1.):
     """Returns (loss, ce, rank, fc). The first three strategies reuse the source-ablation losses unchanged."""
     if strategy != 'aug_pair_rank_fc':
         loss, ce, rk = ablation.source_loss(strategy, name, model, clean, smooth, labels, args.ranking_weight, seed)
@@ -130,12 +138,14 @@ def source_loss(strategy, name, model, clean, smooth, labels, detected, args, se
     logits = torch.stack([logits[:n], logits[n:]], dim=1)
     loss, ce, rk, _ = rank.classification_and_ranking(logits, labels, args.ranking_weight)
     fc = feature_consistency(features, n, detected)
-    return loss+args.fc_weight*fc, ce, rk, fc
+    return loss+args.fc_weight*fc_scale*fc, ce, rk, fc
 
 
 def configuration(args, name, strategy, data, cache_identity, initial, initial_hash):
     weights = dict(ranking_weight=args.ranking_weight if strategy in ('aug_pair_rank', 'aug_pair_rank_fc') else 0.,
                    fc_weight=args.fc_weight if strategy == 'aug_pair_rank_fc' else 0.)
+    if strategy == 'aug_pair_rank_fc' and args.fc_ramp_epochs > 0:      # key absent otherwise: earlier runs stay reusable
+        weights['fc_ramp_epochs'] = args.fc_ramp_epochs
     return dict(protocol=PROTOCOL, model=name, train_filter=args.train_filter, strategy=strategy, seed=args.seed,
         baseline_seed=args.baseline_seed, data=data,
         smoothing=dict(cache_identity, levels=v2.LEVELS), initial_checkpoint_sha256=initial_hash,
@@ -174,7 +184,7 @@ def train(args):
         if (initial['config']['data_hashes']['trainval'] != data['source_trainval_sha256']
                 or initial['config']['data_hashes']['protocol'] != data['source_protocol_sha256']):
             raise ValueError('Baseline/source mismatch')
-        for label, strategy, weight in variants(args.strategies, args.fc_weights):
+        for label, strategy, weight in variants(args.strategies, args.fc_weights, args.fc_ramp_epochs):
             args.fc_weight = weight
             config = configuration(args, name, strategy, data, cache_identity, initial, initial_hash)
             identity = evaluation.key(config)
@@ -243,7 +253,8 @@ def train(args):
                                                        detected.to(args.device))
                     optimizer.zero_grad(set_to_none=True)
                     with base.amp_context(args):
-                        loss, ce, rk, fc = source_loss(strategy, name, model, clean, smooth, labels, detected, args, seed+step)
+                        scale = ramp_scale(epoch, step, len(batches), args.fc_ramp_epochs)
+                        loss, ce, rk, fc = source_loss(strategy, name, model, clean, smooth, labels, detected, args, seed+step, scale)
                     if not torch.isfinite(loss):
                         raise RuntimeError('Nonfinite loss; last completed epoch preserved')
                     loss.backward()
@@ -308,6 +319,7 @@ def parse_args(argv=None):
     for field, default in [('encoder-lr', 1e-5), ('head-lr', 1e-5), ('weight-decay', 1e-4), ('ranking-weight', .25)]:
         p.add_argument('--'+field, type=float, default=default)
     p.add_argument('--fc-weights', nargs='+', type=float, default=[1.], help='lambda(s) of the feature-consistency term')
+    p.add_argument('--fc-ramp-epochs', type=float, default=0., help='linear lambda warm-up length in epochs (0 = none)')
     p.add_argument('--device', choices=['cuda', 'cpu'], default='cuda')
     a = p.parse_args(argv)
     if (min(a.epochs, a.patience, a.source_images, a.val_images, a.batch_size) < 1 or a.batch_size % 2 or a.source_images % 8
