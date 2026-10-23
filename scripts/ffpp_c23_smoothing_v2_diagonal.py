@@ -149,9 +149,12 @@ def configuration(args, name, strategy, data, cache_identity, initial, initial_h
         torch=str(torch.__version__), code_sha256=code_hashes())
 
 
-def without_own_hash(config):
-    """Config minus this file's digest: later evaluation/printing-only edits must not invalidate completed runs."""
-    return {**config, 'code_sha256': {k: v for k, v in config['code_sha256'].items() if k != Path(__file__).name}}
+def comparable(config):
+    """What must match for a COMPLETED run to be reused: everything except this file's digest (later evaluation/printing-only
+    edits) and the package versions (a newer Colab image must not block reuse of finished pilot/earlier runs). An unfinished run
+    still resumes only under the exact identity."""
+    hashes = {k: v for k, v in config['code_sha256'].items() if k != Path(__file__).name}
+    return {k: v for k, v in config.items() if k not in ('versions', 'torch')} | {'code_sha256': hashes}
 
 
 def validate(args, model, val, transform, cache):
@@ -179,16 +182,16 @@ def train(args):
             run.mkdir(parents=True, exist_ok=True)
             if (run/'completed.json').is_file() and (run/'config.json').is_file():
                 saved = json.loads((run/'config.json').read_text())
-                if saved != config and without_own_hash(saved) == without_own_hash(config):
+                if saved != config and comparable(saved) == comparable(config):
                     if json.loads((run/'completed.json').read_text())['identity'] != evaluation.key(saved) or not (run/'best.pt').is_file():
                         raise ValueError(f'Completed run mismatch: {run}')
-                    print('=== ALREADY COMPLETED', name, args.train_filter, strategy, '(only non-training code changed) ===', flush=True)
+                    print('=== ALREADY COMPLETED', name, args.train_filter, label, '(reused: only non-training code or package versions differ) ===', flush=True)
                     continue
             engine.freeze_json(run/'config.json', config)
             if (run/'completed.json').is_file():
                 if json.loads((run/'completed.json').read_text())['identity'] != identity or not (run/'best.pt').is_file():
                     raise ValueError(f'Completed run mismatch: {run}')
-                print('=== ALREADY COMPLETED', name, args.train_filter, strategy, '===', flush=True)
+                print('=== ALREADY COMPLETED', name, args.train_filter, label, '===', flush=True)
                 continue
             base.common.seed_all(args.seed)
             model, transform = base.build_model(name, pretrained=False)

@@ -75,6 +75,10 @@ class DiagonalTests(unittest.TestCase):
             # Completed runs are skipped, not retrained.
             with patch.object(diagonal, 'PairedV2', side_effect=AssertionError('retrained')):
                 diagonal.train(t)
+            # Main experiment after the pilot: a newer package version and more strategies/filters still reuse finished runs.
+            with patch.object(diagonal, 'PairedV2', side_effect=AssertionError('retrained')), \
+                    patch.object(diagonal.engine.metadata, 'version', return_value='9.9.9'):
+                diagonal.train(self.train_args(strategies=['aug_pair_rank', 'aug_pair_rank_fc']))
             # fc_weight=0 reproduces aug_pair_rank exactly: the consistency term is the only difference.
             z = self.train_args(runs_root=self.root/'zero_runs', fc_weights=[0., 10.], strategies=['aug_pair_rank', 'aug_pair_rank_fc'])
             diagonal.train(z)
