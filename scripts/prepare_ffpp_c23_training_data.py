@@ -15,6 +15,7 @@ def main():
     p.add_argument('--drive-data',type=Path,required=True)
     p.add_argument('--data-root',type=Path,required=True)
     p.add_argument('--trainval-only',action='store_true',help='Adaptation training: skip source Test TAR')
+    p.add_argument('--test-only',action='store_true',help='Evaluation only: extract just the source Test TAR')
     args=p.parse_args()
     index=args.drive_data/'method_inventory.json'
     if not index.is_file():index=args.drive_data/'inventory.json'
@@ -23,6 +24,7 @@ def main():
     entries={x['name']:x for x in inventory['archives']}
     archives=METHOD_ARCHIVES+[TEST_ARCHIVE] if inventory.get('layout')=='method_trainval_v1' else ['ffpp_c23_4methods_roi16_trainval_v1.tar',TEST_ARCHIVE]
     if args.trainval_only:archives=[x for x in archives if x!=TEST_ARCHIVE]
+    if args.test_only:archives=[TEST_ARCHIVE]
     for name in archives:
         manifest=args.data_root/'manifests'/f'{name.removesuffix(".tar")}.csv'
         if manifest.is_file():

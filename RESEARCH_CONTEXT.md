@@ -680,3 +680,22 @@ CLIP Baseline .116/-.089(.116), clean .116/-.086(.116), single .082/-.076(.082),
 부트스트랩(조건−rank, fn_gap): Xception pair -.011[-.011,-.010], DINO pair -.006[-.008,-.004], CLIP single -.006[-.009,-.003], pair -.006[-.007,-.004].
 해석: rank가 쏠림을 반대로 옮긴 경우는 없다(fn_gap ≤ +.005, fn_flip ≤5.3%). Baseline은 두 방향이 반대 부호(보정이 진짜·가짜 모두를 가짜 쪽으로 민다). DINO는 rank가 두 방향 모두 가장 0에 가깝다. Xception은 pair·rank 모두 사실상 불변이며 rank는 약한 과보정(fp -.011)으로 max 기준 pair가 근소하게 앞선다(.005 vs .011). CLIP은 세 증강 방법 모두 절반 정도만 줄였고(max .082~.087) rank의 장점은 원본AUC(.813)·fp_cross_auc(.729). 결론 표현: 순위 손실은 증강과 같거나 더 불변에 가깝고 판별력은 같거나 더 잘 지킨다(모든 백본에서 증강보다 확실히 낫다는 아님). 판정은 max(|fp_gap|,|fn_gap|)와 두 격차를 함께 보고, seed43/44로 pair vs rank 차이 확인 예정.
 Colab 메모: Drive에 저장된 노트북 사본은 git pull로 갱신되지 않아 마지막 셀이 옛 열 이름을 찾는다. 최신 노트북은 Colab에서 GitHub로 다시 연다.
+
+## Held-out 뷰티 필터 일반화 결과와 "덧셈 보정" 해석 (2026-10-23)
+evaluate_beauty_filter_generalization(seed42, CDF test, bilateral로만 학습한 ablation 모델) — max(|fp_gap|,|fn_gap|), 필터 순서 bilateral/WMF/FGS/DT:
+Xception Baseline .201/.123/.266/.046, single .023/.040/.115/.103, pair .005/.048/.094/.114, rank .011/.051/.085/.122.
+DINO Baseline .119/.093/.189/.052, single .044/.029/.117/.013, pair .023/.015/.084/.042, rank .007/.008/.073/.044.
+CLIP Baseline .116/.079/.124/.066, single .082/.050/.105/.036, pair .087/.055/.108/.041, rank .084/.054/.102/.039.
+DT(원래 Baseline을 거의 흔들지 않는 필터)에서 Xception·DINO 증강 모델은 부호가 뒤집혀 미탐 방향으로 과보정(Xception rank fn_gap +.122, 진짜/가짜 이동 -.44/-.49σ, FN 뒤집힘 10.1% vs Baseline 3.3%; Baseline보다 악화). WMF도 Xception에서 역전. FGS(Baseline 영향이 가장 큰 필터)는 덜 보정. 과보정 크기 Xception>DINO>CLIP, single<pair<rank. 원본 AUC는 불변이고 진짜·가짜가 같은 방향으로 이동.
+해석(가설): 단일 필터 증강은 스무딩 불변성이 아니라 "학습 필터의 흔적이 보이면 점수에서 일정량을 빼는" 필터 전용 덧셈 보정을 학습한다. bilateral에서는 정확히 상쇄되어 완벽해 보이지만 처음 보는 필터에서는 과·저보정된다. fp_cross_auc만 보면 DT에서 rank가 최고(.768)로 보여 역전을 놓치므로 판정은 두 방향 격차를 함께 본다.
+사용자 결정: 주 실험을 "필터 k로 학습 → 필터 k로 평가"(대각선)로 바꾸고, 같은 모델의 다른 필터 평가(대각선 밖)는 보조로 둔다. 기존 v1 결과는 약한 보정(약 2/255) 참고 결과로 유지한다.
+
+## 스무딩 프로토콜 v2 확정 (2026-10-23)
+v1(기하 타원 마스크 + bilateral, 피부 변화 약 2/255)은 육안으로 거의 보이지 않아 뷰티 보정으로 보기 어렵다는 사용자 지적으로 새 프로토콜을 정했다. CDF/FF++ 크롭으로 강도·마스크·필터 설정을 단계별로 육안 검토(outputs/beauty_strength_preview, git 제외)한 뒤 사용자가 확정.
+- 마스크: SegFormer jonathandinu/face-parsing(revision 758b82e1, CelebAMask-HQ) 피부+코, 1% 침식·1.2% 페더링. 기하 타원은 강도를 올리면 배경·턱선·머리카락까지 번져 폐기. 무작위 FF++ 50·CDF test 50장 검토에서 피부 면적 CDF 16~34%, FF++ 15~28%; 실패는 얼굴 미검출 fallback 프레임(피부 0%, 원래도 미변환)뿐. 한계: 덥수룩한 수염이 피부로 잡혀 함께 문질러짐(50장 중 약 2장).
+- 필터 4개(경계 보존: 색 시그마 고정 bilateral 35 / WMF 35 / FGS 8 / DT 40, 강도는 공간 범위로만): 색 시그마가 크면 코·눈가 음영 경계를 넘어 얼굴이 뭉개지는 것을 확인하고 낮췄다. 육안 승인 공간 범위 bilateral .08225 / WMF .04465 / FGS .0158 / DT .1044(CDF 비테스트 16장·기하 마스크 기준 피부 변화 3.5).
+- 약·중·강 = 마스크 안 .25/.5/.75. L3 100%는 뭉개짐, L2(3.5) 75%를 강으로 채택.
+- 정식 강도: calibrate_beauty_smoothing_v2.py가 FF++ train 300장·파싱 마스크로 앵커(bilateral 승인값)의 피부 변화 중앙값에 나머지 세 필터의 공간 범위를 맞춘다(CDF 미사용). 결과 Drive manifests/beauty_smoothing_v2/calibration.json(아직 미실행).
+- 코드: scripts/beauty_smoothing_v2.py(프로토콜·파서·캐시 리더), build_beauty_smoothing_v2_cache.py(데이터셋 cdf_test/ffpp_test/ffpp_trainval; mask + 필터 4개를 섞기 전 100%로 부분마다 Drive tar 하나, 재개·복원), evaluate_beauty_smoothing_v2.py(cdf_test 또는 ffpp_test, 현재 Baseline만, 원본 1회 + 필터 4×3강도). prepare_ffpp_c23_training_data.py에 --test-only 추가(기존 동작 불변). v1 코드·결과는 변경하지 않음.
+- 노트북: calibrate_beauty_smoothing_v2 → build_beauty_smoothing_v2_cache(cdf_test·ffpp_test 먼저, ffpp_trainval은 병렬) → evaluate_beauty_smoothing_v2_baseline_seed42(모델별). tests/test_beauty_smoothing_v2.py(가짜 파서·필터) 통과, 실제 파서·contrib 필터로 CDF 8장 캐시 생성·tar 확인. GPU 실행은 아직 없음.
+- 계획: Baseline v2 평가에서 쏠림 확인(관문) → 대각선 학습 aug_single/aug_pair/aug_pair_rank × 필터 4 × 백본 3 = 36 run(seed42), best epoch는 FF++ val 원본+학습 필터 k pooled AUC, 각 모델을 필터 4개 모두로 평가해 4×4 표. clean_only는 주 실험에서 제외(v1에서 추가 학습만으로 격차가 줄지 않음을 이미 보임). FF++ test(같은 도메인) 평가도 Baseline부터 포함: CDF 도메인 차이 없이 스무딩만의 영향을 분리.
