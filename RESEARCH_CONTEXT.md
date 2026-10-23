@@ -658,3 +658,16 @@ DINO Baseline -0.042/-0.051/-0.053/-0.032, CE+Rank -0.039/-0.052/-0.070/-0.055; 
 12개 조합 모두 FF++ 스타일로 AUC가 오르지 않았고, ffpp_b와 cdf_b 차이는 ±0.01~0.03로 방향도 일정하지 않다. 변환 시 원본 진짜 FPR이 CLIP 51%→87~98%, DINO 23%→62~85%로 증가(인공 변형을 조작 흔적으로 읽음).
 해석: 저주파 스타일은 FF++→CDF 차이의 원인이 아니다. 앞의 분해와 합치면 차이는 조작 흔적(합성 방식·품질) 쪽. FF++→CDF 스타일 짝 학습은 진행하지 않는다.
 한계: FDA 연산 손상이 순수 스타일 효과를 가렸을 수 있으나 cdf_b 대비 FF++ 스타일 고유 이득은 어디에도 없었다. 실행 약 2시간(CPU FFT를 6개 체크포인트마다 반복); 이후 공유 변환은 캐시하기로 함.
+
+## Source-only ablation 결과와 held-out 뷰티 필터 보정 (2026-10-23)
+scripts/ffpp_c23_smoothing_source_ablation.py(+테스트, 모델별 7셀 코랩): clean_only / aug_single(원본 1/4 또는 무작위 강도 스무딩 한 장) / aug_pair(원본+스무딩 두 장 CE) / aug_pair_rank(두 장 CE + 0.25 순위, pool v2 CE+Rank와 가중치 완전 일치). 같은 baseline·표본·배치, FF++ val pooled AUC 선택(최대10/patience3), CDF는 학습·선택 미사용.
+CDF 공식 test(bilateral, seed42) 원본AUC / 스무딩 격차(원본AUC − 강진짜vs원본가짜) / 강진짜vs원본가짜 / 진짜 뒤집힘@normal5:
+Xception Baseline .660/.201/.459/17.5%, clean .671/.223/.448/14.8%, single .647/.013/.634/2.0%, pair .653/-.003/.657/1.5%, rank .656/-.011/.667/1.3%.
+DINO Baseline .728/.119/.609/9.6%, clean .734/.092/.642/6.9%, single .720/.044/.676/3.3%, pair .725/.023/.701/2.6%, rank(epoch8) .717/.007/.710/1.4%.
+CLIP Baseline .798/.116/.682/9.4%, clean .801/.116/.686/9.5%, single .771/.082/.689/5.0%, pair .800/.087/.713/5.5%, rank .813/.084/.729/5.5%.
+격차 차이(조건−rank, 영상 부트스트랩95%): Xception single +.024[.022,.026], pair +.008[.007,.009]; DINO single +.037[.032,.042], pair +.016[.013,.020]; CLIP single -.002[-.005,.002], pair +.004[.002,.005].
+사전 판정(세 백본 모두 rank 격차 < single·pair, 원본AUC 손실 ≤.01): Xception·DINO 충족, CLIP은 single과 격차 동률이라 미충족이지만 원본AUC·강진짜vs원본가짜는 rank가 최고. clean_only는 격차를 줄이지 못해 효과는 스무딩 노출에서 나온다.
+한계: seed42 단일(부트스트랩은 test 표본 변동만), DINO run 변동 ~.03이라 pair vs rank는 seed43/44로 확정 필요(사용자: 나중에). 10/16 matched Aug vs CE+Rank v1에서 짝 증강이 격차가 더 작아 보였던 것은 선택 기준 차이로 보이며 공정 비교에서 재현되지 않았다.
+scripts/beauty_smoothing_filters.py, calibrate_beauty_filters.py(+테스트, CPU 코랩): StyleRetoucher(arXiv 2312.14389) 2.1절의 피부 스무딩 필터 세 계열에서 하나씩 — weighted median(Zhang CVPR2014), fast global smoother(Min TIP2014), domain transform(Gastal SIGGRAPH2011), OpenCV contrib 4.11.0.86(학습 OpenCV와 같은 버전).
+같은 피부 마스크·섞기 비율(.25/.5/.75). 보정 기준은 FF++ train 300장의 피부 마스크 평균 |RGB 변화| 중앙값을 bilateral 완전 스무딩(2.06/255)에 맞춤. 고주파 에너지 감소율은 c23에서 압축·윤곽 엣지가 지배(bilateral .08)하고 weighted median에서 음수라 기준에서 제외, 참고값만 기록.
+보정값: weighted median 반경=ROI 한 변의 1.607%(변화 2.04), fast global 범위=0.511%(2.05, 고주파 감소 .45로 성격이 가장 다름), domain transform 색 시그마 47.1(공간 .02, 2.05). 학습 bilateral 자체가 FF++ 피부를 평균 ~2/255만 바꾸는 육안 거의 불가 수준의 약한 보정임을 기록.
