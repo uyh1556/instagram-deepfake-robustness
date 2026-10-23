@@ -741,3 +741,10 @@ v2 캐시 20개 tar 완료(ffpp_trainval 62,418장 34.8GB, ffpp_test 11,058, cdf
 학습 코드 scripts/ffpp_c23_smoothing_v2_diagonal.py: 필터 k의 v2 캐시(mask+k만 풀기)로 source ablation과 같은 표본·배치·flip·강도 추첨·선택 규칙(FF++ val 원본+k 약중강 pooled AUC). 조건 aug_single/aug_pair/aug_pair_rank/aug_pair_rank_fc(학습법 A: rank + λ·(1−cos(f_smooth, stopgrad f_clean)), 분류기 입력 특징, 검출 프레임만). λ마다 run 이름 aug_pair_rank_fc<λ>. 모든 seed가 baseline seed42에서 출발(--baseline-seed), 에폭 표본 CSV는 seed별 폴더. 평가는 evaluate_beauty_smoothing_v2.py --runs-root로 strategy@train_filter 라벨, held_out 표시. 노트북 train_eval_ffpp_c23_smoothing_v2_diagonal(파일럿·본 실험 공용, 끝난 run 재사용).
 파일럿(사용자 결정): bilateral, CLIP·Xception, seed42, aug_pair_rank + rank+일관성 λ∈{1,10,100}, cdf_dev만 평가. A가 rank 대비 처음 보는 필터 쏠림을 줄이고 원본 AUC를 유지하는 λ를 고른 뒤 본 실험(필터 4 × 조건 4 × 백본 3 × seed 3)에 그 λ만 사용.
 v2 Baseline FF++ test(같은 도메인) 보충: Xception max|gap| bil .069/WMF .030/FGS .155/DT .015(원본 AUC .980; FP 뒤집힘 25.6/12.6/48.6/7.3%, DT 가짜 이동 -0.65σ·FN 뒤집힘 6.7%), DINO .024/.028/.154/.032(.952; FGS FP 뒤집힘 32.5%, DT 가짜 -0.33σ·FN 뒤집힘 9.2%). CDF와 같은 패턴: FGS가 세 백본 모두 최대 오탐 방향, DT는 Xception·DINO에서 두 도메인 모두 진짜 쪽(세탁) → 도메인 효과가 아님. FF++ test는 원본 AUC 천장(.95~.98)이라 AUC 격차는 작게, 뒤집힘·점수 이동은 크게 나타남.
+
+## λ 파일럿 CLIP 결과 (bilateral 학습, seed42, cdf_dev; 2026-10-24)
+원본 AUC: Baseline .796, rank .775, fc1 .766, fc10 .792, fc100 .761. 나쁜 쪽 교차 AUC(bil/WMF/FGS/DT): rank .706/.681/.612/.744, fc1 .740/.710/.616/.735, fc10 .743/.706/.630/.761, fc100 .754/.709/.621/.739 (Baseline .505/.487/.470/.574).
+max|gap|: rank .069/.095/.163/.032, fc1 .027/.057/.150/.031, fc10 .049/.086/.162/.030, fc100 .007/.052/.140/.022.
+강 스무딩 점수 이동 σ(진짜/가짜) bilateral: rank .36/.19, fc1 .12/.08, fc10 .24/.18, fc100 .03/-.01; 강도 곡선 fc100은 약·중·강 모두 0 근처(평탄 = 불변성 형태). CLIP rank는 약한 강도 과보정 없음(미보정 형태, v1과 같음).
+흔적 프로브(FF++ val, bilateral 강) 감지 AUC/특징 이동: Baseline .921/.687, rank .927/.330, fc1 .884/.172, fc10 .929/.228, fc100 .769/.151.
+해석: 일관성 항이 학습 필터 쏠림과 흔적을 줄이고(λ=100에서 뚜렷) 교차 AUC를 올림. 처음 보는 필터 WMF는 절반 감소, FGS는 거의 그대로(흔적 방향이 다름 — 후보 3과 일치), DT는 원래 작음(fc1/fc100 가짜 -0.10~-0.12σ 소폭). λ 순서가 단조롭지 않음(fc10이 fc1보다 쏠림·감지 AUC가 큼) → seed 하나의 run 변동이 큼. λ 결정은 Xception 결과와 함께.
