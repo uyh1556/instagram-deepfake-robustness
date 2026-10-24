@@ -802,3 +802,11 @@ Xception (원본 AUC / max|gap| bil·WMF·FGS·DT / DT 가짜 이동 / 흔적 �
 - FGS 학습: single .778 / .109·.079·.043·.009, pair .759 / .093·.055·.017·.043, rank .772 / .159·.139·.095·.051, fc .736 / .067·.047·.026·.058
 - DT 학습: single .792 / .196·.168·.221·.075, pair .786 / .170·.143·.185·.049, rank .794 / .167·.139·.180·.047, fc = Baseline(epoch 0 선택; FF++ val pooled가 Baseline을 넘지 못함)
 해석(seed 하나): 모든 학습 조건이 Baseline 쏠림을 줄임. fc는 학습 필터·처음 보는 필터 쏠림이 rank보다 대체로 작음(bilateral·WMF·FGS 학습 모두), 대신 WMF·FGS 학습에서 원본 AUC -.04~-.05. CLIP에서 rank는 pair와 거의 같음(FGS 학습만 rank가 나쁨). FGS로 학습하면 다른 필터로 가장 잘 일반화, DT로 학습하면 가장 덜 일반화(DT는 CLIP에서 약한 스무딩). epoch 0 선택은 Xception만의 문제가 아님(CLIP fc@DT). fc 모델은 처음 보는 DT에서 소폭 미탐 방향(가짜 -0.15~-0.22σ).
+
+## 본 실험 DINO seed42 cdf_test 결과 (2026-10-24)
+원본 AUC / max|gap| bilateral·WMF·FGS·DT (괄호: 방향, DT는 가짜 점수 이동). Baseline .728 / .060·.071·.272(FP)·.144(FN, 가짜 -0.56σ).
+- bilateral 학습: single = Baseline(epoch 0), pair .735 / .018·.040·.210·.203(-0.78σ), rank .748 / .007·.028·.194·.196(-0.80σ), fc .733 / .008·.021·.197·.203(-0.76σ)
+- WMF 학습: single .746 / .043·.027·.213·.156, pair .731 / .015·.021·.149·.158, rank .750 / .029·.027·.189·.179(-0.75σ), fc .719 / .026·.026·.182·.147(-0.56σ)
+- FGS 학습: single .749 / .017·.107·.021·.260(-1.00σ), pair .726 / .013·.089·.052·.240, rank .713 / .015·.100·.038·.235(-0.89σ), fc .692 / .010·.055·.027·.190(-0.72σ)
+- DT 학습: single .723 / .063·.063·.200·.048, pair .729 / .061·.072·.208·.057, rank .757 / .056·.068·.197·.052, fc = Baseline(epoch 0)
+해석(seed 하나): DINO는 Baseline의 bilateral·WMF 쏠림이 원래 작고 문제는 FGS(오탐)와 DT(세탁). bilateral·WMF·FGS로 학습하면 처음 보는 DT의 미탐이 오히려 커짐(.144 → .15~.26, 가짜 최대 -1.00σ) — Xception 파일럿과 같은 "다른 필터 학습이 DT 세탁을 키움" 패턴(CLIP에는 없음). DT 자체로 학습해야만 DT가 줄어듦. fc는 rank 대비 이점이 거의 없고 원본 AUC가 .02~.03 낮음(DT 미탐만 WMF·FGS 학습에서 조금 덜함). rank가 원본 AUC 최고. epoch 0 선택: single@bilateral, fc@DT.
