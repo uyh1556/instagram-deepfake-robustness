@@ -77,9 +77,9 @@ class NonskinFusionTests(unittest.TestCase):
         with patch.object(v2, 'full', side_effect=v2_fixture.fake_full):
             diagonal.train(argparse.Namespace(source_root=a.source_root, baseline_runs_root=a.baseline_runs_root, runs_root=runs,
                 manifest_root=self.root/'diag_manifests', archive_dir=self.root/'drive', source_validation=None, cache_root=self.root/'cache_train',
-                train_filter='bilateral', models=['dinov2_b14'], strategies=['aug_pair_rank'], seed=42, baseline_seed=42, epochs=1, patience=3,
+                train_filter='bilateral', models=['dinov2_b14'], strategies=['aug_pair_rank', 'aug_pair_rank_fc'], seed=42, baseline_seed=42, epochs=1, patience=3,
                 source_images=16, val_images=16, batch_size=4, workers=0, encoder_lr=1e-3, head_lr=1e-3, weight_decay=1e-4, ranking_weight=.25,
-                fc_weights=[1.], fc_ramp_epochs=0., adv_weights=[1.], adv_ramp_epochs=2., adv_lr=1e-3, proj_ks=[4], replace_runs=[], device='cpu'))
+                fc_weights=[diagonal.FC_WEIGHT], fc_ramp_epochs=diagonal.FC_RAMP, adv_weights=[1.], adv_ramp_epochs=2., adv_lr=1e-3, proj_ks=[4], replace_runs=[], device='cpu'))
         on_rank = argparse.Namespace(**{**vars(args), 'full_model': 'rank', 'runs_parent': self.root/'runs_parent'})
         with patch.object(fusion, 'InnerParser', side_effect=AssertionError('reparsed')):
             ranked = fusion.run(on_rank)
@@ -87,6 +87,11 @@ class NonskinFusionTests(unittest.TestCase):
         self.assertTrue((self.root/'fus/nonskin_fusion_on_rank_bilateral_verdict_seed42.csv').is_file())
         # The non-skin probe is the same (baseline features) in both runs.
         self.assertTrue(np.allclose(ranked.nonskin_alone_auc, table.nonskin_alone_auc))
+        on_fc = argparse.Namespace(**{**vars(on_rank), 'full_model': 'fc'})
+        with patch.object(fusion, 'InnerParser', side_effect=AssertionError('reparsed')):
+            fc = fusion.run(on_fc)
+        self.assertEqual(set(fc.full_model), {'aug_pair_rank_fc100_ramp2@bilateral'})
+        self.assertTrue((self.root/'fus/nonskin_fusion_on_fc_bilateral_verdict_seed42.csv').is_file())
 
 
 if __name__ == '__main__':
