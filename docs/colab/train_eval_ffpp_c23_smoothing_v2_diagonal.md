@@ -116,15 +116,13 @@ for seed in SEEDS:
 마지막 표는 끝난 seed들의 평균 ± 표준편차(max|gap|, 원본 AUC).
 
 ```python
-import json, sys
+import json
 import pandas as pd
 from IPython.display import Markdown,display
-sys.path.insert(0,str(PROJECT/'scripts'))
-import ffpp_c23_smoothing_v2_diagonal as diagonal
 filters=['bilateral','weighted_median','fast_global','domain_transform']
-def selected_epoch(seed,r):
+def selected_epoch(seed,r):   # run folder = diagonal.run_name (not imported: Cell 1 upgrades Pillow under the running kernel)
     if r['method']=='baseline': return ''
-    done=RUNS/diagonal.run_name(GROUP,r['train_filter'],r['method'],seed)/'completed.json'
+    done=RUNS/f"{GROUP}_{r['train_filter']}_{r['method']}_ffpp_c23_smoothing_v2_diagonal_v1_seed{seed}"/'completed.json'
     return json.loads(done.read_text())['selected_epoch'] if done.is_file() else '?'
 for d in EVAL_DATASETS:
     tables=[]
