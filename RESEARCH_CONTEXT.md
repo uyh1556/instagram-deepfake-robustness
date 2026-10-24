@@ -855,3 +855,9 @@ cdf_dev, aug_pair_rank@bilateral seed42 + Baseline 피부 밖 probe, oracle w. �
 ## fc 위 피부 밖 융합 확인 코드와 사전 기준 (2026-10-25)
 diagnose_nonskin_fusion.py --full-model fc(aug_pair_rank_fc100_ramp2@bilateral, 피부 밖 probe는 Baseline 그대로), 노트북 diagnose_nonskin_fusion_on_fc(CLIP·DINO; Xception fc@bilateral = epoch 0 = Baseline이라 제외).
 사전 판정 기준(결과 전 확정, 주 변형 face_inner): 비교 기준 = rank + face_inner(rank 위 판정표의 w). 어떤 w에서 fc + face_inner가 원본 AUC를 기준 대비 -0.01 이내 + 4필터 중 3개 이상 나쁜 쪽 교차 AUC +0.02 이상이면 통과, 아니면 fc + 피부 밖 조합은 접음.
+
+## fc 위 피부 밖 융합 결과 + 고정 w 관찰 (2026-10-25)
+cdf_dev, bilateral 학습 run seed42, oracle w. 나쁜 쪽 교차 AUC bil·WMF·FGS·DT.
+- 사전 기준(fc + face_inner vs rank + face_inner w=.3): CLIP 불합격 — w=.3 원본 .779 vs .791(-.012), bil +.040·WMF +.042·FGS -.008·DT -.025(2필터). DINO 불합격(차이 ±.01). → fc + 피부 밖 조합은 접음.
+- 다만 CLIP fc + face_inner(w=.3)를 rank 단독과 비교하면 원본 .779 vs .781(-.002), .769 vs .712(+.057)·.742 vs .680(+.062)·.634 vs .608(+.026)·.738 vs .750(-.012): 융합이 fc의 원본 AUC 손실을 메움(fc 단독 .766 → .779). 학습·유사 필터는 fc 조합이, DT는 rank 조합이 나음.
+- 사후 관찰(결과를 본 뒤의 관찰이라 검정 아님): rank + face_inner를 고정 w=.2로 세 백본에 똑같이 쓰면 원본 AUC가 셋 다 rank 이상(Xception +.007, CLIP +.011, DINO +.003)이고 12칸 전부 개선 — Xception +.006/+.025/+.017/+.044, CLIP +.016/+.017/+.027/+.012, DINO +.002/+.003/+.019/+.017. 손해 없는 공통 추가 모듈 후보. w=.2는 cdf_dev를 보고 고른 값이므로, 쓰려면 이 값을 지금 고정(사전 등록)하고 다른 학습 필터·seed 43/44 rank run에서 확인한 뒤 cdf_test는 마지막 한 번만.
