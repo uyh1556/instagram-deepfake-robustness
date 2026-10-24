@@ -787,3 +787,10 @@ Xception (원본 AUC / max|gap| bil·WMF·FGS·DT / DT 가짜 이동 / 흔적 �
 - A' 프로브 AUC가 rank와 같은 것은 정상: 백본이 그대로라 프로브는 투영 전 특징을 봄.
 - CLIP: 적대·fc100·A' 모두 학습 필터와 WMF는 줄이지만 FGS는 못 줄임, 원본 AUC 비용은 fc100이 가장 작음(-.014).
 사전 합의("한 번 더 실패하면 분석 중심 논문으로 마무리")에 해당. 결정은 사용자에게.
+
+## 본 실험 설정 확정: 학습법 A = fc100 + 워밍업 2 (2026-10-24)
+사용자 결정으로 대각선 본 실험은 aug_single / aug_pair / aug_pair_rank / aug_pair_rank_fc100_ramp2, 필터 4 × seed 42/43/44 × 세 백본.
+- 워밍업(λ 0→100, 2 epoch, 워밍업 epoch은 patience 미집계)은 세 백본 모두 동일 적용(백본별 설정 없음). 다른 조건은 워밍업이 없어 영향 없음.
+- 선택 규칙은 그대로(FF++ val pooled AUC, epoch 0 후보 포함). Xception은 이 설정으로도 epoch 0이 선택되고 last.pt 진단도 나빴으므로(위 기록), 학습을 억지로 진행시키는 규칙 변경은 하지 않고 "Xception에서는 A가 Baseline을 넘지 못함"을 결과로 보고. 선택 epoch을 표에 함께 표시.
+- CLIP fc100 파일럿(워밍업 없음)은 이름이 달라 재사용하지 않고 fc100_ramp2로 새로 학습. Xception fc100_ramp2 bilateral seed42는 재사용.
+- 스크립트 기본값(MAIN_STRATEGIES, FC_WEIGHT=100, FC_RAMP=2)으로 고정해 노트북 Cell 2는 MODELS/TRAIN_FILTERS/SEEDS/EVAL_DATASETS만 남김. adv/proj 코드는 유지(파일럿 설정은 커밋 96152aa 노트북).

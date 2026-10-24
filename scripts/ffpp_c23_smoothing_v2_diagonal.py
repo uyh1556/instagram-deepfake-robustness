@@ -47,6 +47,8 @@ ROOT = Path(__file__).resolve().parents[1]
 PROTOCOL = 'ffpp_c23_smoothing_v2_diagonal_v1'
 STRATEGIES = ['aug_single', 'aug_pair', 'aug_pair_rank', 'aug_pair_rank_fc', 'aug_pair_rank_adv', 'aug_pair_rank_proj']
 RANKED = ('aug_pair_rank', 'aug_pair_rank_fc', 'aug_pair_rank_adv')
+MAIN_STRATEGIES = STRATEGIES[:4]        # main diagonal experiment; adv/proj were pilots only (both failed, RESEARCH_CONTEXT 2026-10-24)
+FC_WEIGHT, FC_RAMP = 100., 2.          # method A fixed after the pilots: lambda 100, 2 warm-up epochs, same for all backbones
 CONDITIONS = engine.CONDITIONS          # normal, smooth_weak, smooth_medium, smooth_strong
 CLEAN_PROBABILITY = ablation.CLEAN_PROBABILITY
 
@@ -381,14 +383,14 @@ def parse_args(argv=None):
     p.add_argument('--cache-root', type=Path, default=Path('/content/beauty_smoothing_v2_cache'))
     p.add_argument('--train-filter', choices=v2.FILTERS, required=True)
     p.add_argument('--models', nargs='+', choices=list(base.PREPROCESS), default=['clip_b16'])
-    p.add_argument('--strategies', nargs='+', choices=STRATEGIES, default=STRATEGIES)
+    p.add_argument('--strategies', nargs='+', choices=STRATEGIES, default=MAIN_STRATEGIES)
     for field, default in [('seed', 42), ('baseline-seed', 42), ('epochs', 10), ('patience', 3), ('source-images', 6000), ('val-images', 1200),
                           ('batch-size', 16), ('workers', 2)]:
         p.add_argument('--'+field, type=int, default=default)
     for field, default in [('encoder-lr', 1e-5), ('head-lr', 1e-5), ('weight-decay', 1e-4), ('ranking-weight', .25)]:
         p.add_argument('--'+field, type=float, default=default)
-    p.add_argument('--fc-weights', nargs='+', type=float, default=[1.], help='lambda(s) of the feature-consistency term')
-    p.add_argument('--fc-ramp-epochs', type=float, default=0., help='linear lambda warm-up length in epochs (0 = none)')
+    p.add_argument('--fc-weights', nargs='+', type=float, default=[FC_WEIGHT], help='lambda(s) of the feature-consistency term')
+    p.add_argument('--fc-ramp-epochs', type=float, default=FC_RAMP, help='linear lambda warm-up length in epochs (0 = none)')
     p.add_argument('--adv-weights', nargs='+', type=float, default=[1.], help='beta(s) of the adversarial trace-removal term')
     p.add_argument('--adv-ramp-epochs', type=float, default=2., help='linear beta warm-up length in epochs (0 = none)')
     p.add_argument('--adv-lr', type=float, default=1e-3, help='learning rate of the training-only discriminator')
