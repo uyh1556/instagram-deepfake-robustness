@@ -810,3 +810,9 @@ Xception (원본 AUC / max|gap| bil·WMF·FGS·DT / DT 가짜 이동 / 흔적 �
 - FGS 학습: single .749 / .017·.107·.021·.260(-1.00σ), pair .726 / .013·.089·.052·.240, rank .713 / .015·.100·.038·.235(-0.89σ), fc .692 / .010·.055·.027·.190(-0.72σ)
 - DT 학습: single .723 / .063·.063·.200·.048, pair .729 / .061·.072·.208·.057, rank .757 / .056·.068·.197·.052, fc = Baseline(epoch 0)
 해석(seed 하나): DINO는 Baseline의 bilateral·WMF 쏠림이 원래 작고 문제는 FGS(오탐)와 DT(세탁). bilateral·WMF·FGS로 학습하면 처음 보는 DT의 미탐이 오히려 커짐(.144 → .15~.26, 가짜 최대 -1.00σ) — Xception 파일럿과 같은 "다른 필터 학습이 DT 세탁을 키움" 패턴(CLIP에는 없음). DT 자체로 학습해야만 DT가 줄어듦. fc는 rank 대비 이점이 거의 없고 원본 AUC가 .02~.03 낮음(DT 미탐만 WMF·FGS 학습에서 조금 덜함). rank가 원본 AUC 최고. epoch 0 선택: single@bilateral, fc@DT.
+
+## 피부 가림 사전 확인 코드 (2026-10-25)
+외부 검토(ChatGPT) 제안 중 "피부를 가린 입력에도 정답을 맞히는 보조 손실" 후보의 사전 확인. scripts/diagnose_skin_occlusion.py + notebooks/diagnose_skin_occlusion(세 백본 한 코랩, 학습 없음).
+FF++ Baseline seed42에 원본 / v2 피부 마스크를 회색(128, 부드러운 경계 그대로)으로 가린 입력. head = Baseline 분류기 그대로, probe = 분류기 입력 특징에 FF++ train 2,000장으로 맞춘 로지스틱 → FF++ val 1,200장(조작 방법별 포함)·cdf_dev 2,000장 AUC. CDF test 미사용.
+사전 판정 기준(결과 전 확정): probe cdf_dev AUC가 원본 대비 -0.05 이내면 피부 가림 보조 손실 파일럿 진행, 크게 떨어지면 이 방향 접음.
+같은 검토에서 받아들인 정정: 나쁜 쪽 교차 AUC는 일반적으로 원본 AUC가 상한이 아님(유리한 방향 이동이면 넘을 수 있음); max|gap|은 유리한 이동도 벌점이므로 원본·FP 교차·FN 교차 실제 값을 함께 보고; "도메인 효과가 아니다" → "CDF 도메인 변화만으로 설명되지 않는다"; 원본 AUC 유지는 rank 대비/Baseline 대비를 구분해 기록; 프로브 AUC는 합격 기준에서 제외.
