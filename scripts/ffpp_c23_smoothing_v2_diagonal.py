@@ -207,9 +207,9 @@ def configuration(args, name, strategy, data, cache_identity, initial, initial_h
 
 
 def comparable(config):
-    """What must match for a COMPLETED run to be reused: everything except this file's digest (later evaluation/printing-only
-    edits) and the package versions (a newer Colab image must not block reuse of finished pilot/earlier runs). An unfinished run
-    still resumes only under the exact identity."""
+    """What must match for a run to be reused or resumed: everything except this file's digest (later evaluation/printing/
+    post-hoc-only edits) and the package versions (a newer Colab image must not block finished or interrupted runs). An
+    interrupted run resumes under its OWN saved config/identity, so its checkpoints stay consistent."""
     hashes = {k: v for k, v in config['code_sha256'].items() if k != Path(__file__).name}
     return {k: v for k, v in config.items() if k not in ('versions', 'torch')} | {'code_sha256': hashes}
 
@@ -256,6 +256,11 @@ def train(args):
                         raise ValueError(f'Completed run mismatch: {run}')
                     print('=== ALREADY COMPLETED', name, args.train_filter, label, '(reused: only non-training code or package versions differ) ===', flush=True)
                     continue
+            if not (run/'completed.json').is_file() and (run/'config.json').is_file():
+                saved = json.loads((run/'config.json').read_text())
+                if saved != config and comparable(saved) == comparable(config):
+                    config, identity = saved, evaluation.key(saved)
+                    print('=== RESUME', name, args.train_filter, label, 'under its saved config (only non-training code or package versions differ) ===', flush=True)
             engine.freeze_json(run/'config.json', config)
             if (run/'completed.json').is_file():
                 if json.loads((run/'completed.json').read_text())['identity'] != identity or not (run/'best.pt').is_file():
