@@ -794,3 +794,11 @@ Xception (원본 AUC / max|gap| bil·WMF·FGS·DT / DT 가짜 이동 / 흔적 �
 - 선택 규칙은 그대로(FF++ val pooled AUC, epoch 0 후보 포함). Xception은 이 설정으로도 epoch 0이 선택되고 last.pt 진단도 나빴으므로(위 기록), 학습을 억지로 진행시키는 규칙 변경은 하지 않고 "Xception에서는 A가 Baseline을 넘지 못함"을 결과로 보고. 선택 epoch을 표에 함께 표시.
 - CLIP fc100 파일럿(워밍업 없음)은 이름이 달라 재사용하지 않고 fc100_ramp2로 새로 학습. Xception fc100_ramp2 bilateral seed42는 재사용.
 - 스크립트 기본값(MAIN_STRATEGIES, FC_WEIGHT=100, FC_RAMP=2)으로 고정해 노트북 Cell 2는 MODELS/TRAIN_FILTERS/SEEDS/EVAL_DATASETS만 남김. adv/proj 코드는 유지(파일럿 설정은 커밋 96152aa 노트북).
+
+## 본 실험 CLIP seed42 cdf_test 결과 (2026-10-24)
+원본 AUC / max|gap| bilateral·WMF·FGS·DT (학습 필터 = 대각선). Baseline .798 / .291·.314·.309·.225(모두 오탐 방향).
+- bilateral 학습: single .768 / .133·.149·.207·.069, pair .754 / .088·.117·.178·.039, rank .753 / .085·.114·.175·.038, fc .759 / .011·.042·.160·.033
+- WMF 학습: single .788 / .162·.129·.200·.056, pair .780 / .125·.084·.159·.016, rank .780 / .127·.086·.161·.019, fc .731 / .081·.036·.131·.022
+- FGS 학습: single .778 / .109·.079·.043·.009, pair .759 / .093·.055·.017·.043, rank .772 / .159·.139·.095·.051, fc .736 / .067·.047·.026·.058
+- DT 학습: single .792 / .196·.168·.221·.075, pair .786 / .170·.143·.185·.049, rank .794 / .167·.139·.180·.047, fc = Baseline(epoch 0 선택; FF++ val pooled가 Baseline을 넘지 못함)
+해석(seed 하나): 모든 학습 조건이 Baseline 쏠림을 줄임. fc는 학습 필터·처음 보는 필터 쏠림이 rank보다 대체로 작음(bilateral·WMF·FGS 학습 모두), 대신 WMF·FGS 학습에서 원본 AUC -.04~-.05. CLIP에서 rank는 pair와 거의 같음(FGS 학습만 rank가 나쁨). FGS로 학습하면 다른 필터로 가장 잘 일반화, DT로 학습하면 가장 덜 일반화(DT는 CLIP에서 약한 스무딩). epoch 0 선택은 Xception만의 문제가 아님(CLIP fc@DT). fc 모델은 처음 보는 DT에서 소폭 미탐 방향(가짜 -0.15~-0.22σ).
