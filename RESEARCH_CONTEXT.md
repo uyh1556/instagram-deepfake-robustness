@@ -843,3 +843,11 @@ cdf_dev, Baseline seed42, w는 cdf_dev 위 oracle. 나쁜 쪽 교차 AUC bil·WM
 ## rank 위 피부 밖 융합 확인 코드와 사전 기준 (2026-10-25)
 diagnose_nonskin_fusion.py --full-model rank: 전체 얼굴 점수를 v2 대각선 aug_pair_rank@bilateral seed42 run에서, 피부 밖 probe는 Baseline 특징 그대로. 노트북 diagnose_nonskin_fusion_on_rank. 출력 nonskin_fusion_on_rank_bilateral_{seed42,verdict_seed42}.csv.
 사전 판정 기준(결과 전 확정): 주 변형 face_inner(noskin은 참고). 어떤 w>0에서 원본 AUC가 rank 단독(w=0) 대비 -0.01 이내 + 4필터 중 3개 이상 나쁜 쪽 교차 AUC가 rank 단독 대비 +0.02 이상이면 통과. cdf_dev oracle w라 불합격 백본은 방향 폐기, 통과 백본만 rank + 피부 가림 보조 손실 학습 파일럿 대상.
+
+## rank 위 피부 밖 융합 결과: Xception만 통과 (2026-10-25)
+cdf_dev, aug_pair_rank@bilateral seed42 + Baseline 피부 밖 probe, oracle w. 나쁜 쪽 교차 AUC bil·WMF·FGS·DT, rank 단독 → 통과 w.
+- Xception face_inner w=.3 **통과**: 원본 .764 → .772(+.008), .768→.776 / .601→.636 / .656→.680 / .394→.460. 처음 보는 WMF·FGS·DT 모두 +.02 이상, 특히 DT +.066(DT 가짜 -1.45σ → -1.16σ). w=.5면 DT .516, 원본 .768. noskin도 w=.4로 통과(원본 -.003).
+- CLIP 불합격(face_inner 2필터, w=.3): 원본 .781 → .791(+.010), .712→.730 / .680→.700 / .608→.642 / .750→.762 — 이득이 Baseline 위(+.05~.08)보다 크게 줄어 경계선 아래.
+- DINO 불합격: 원본 거의 그대로, FGS·DT +.02 미만.
+해석: CLIP의 Baseline 위 이득은 대부분 쏠림 희석이었고 rank가 그 몫을 이미 가져감. Xception은 rank가 만든 처음 보는 필터 과보정(특히 DT 세탁)을 피부 밖 점수가 실제로 완화 — 흔적 제거(fc·적대·A')가 모두 실패한 바로 그 문제. 원본 AUC도 오름(상보).
+사전 규칙대로 학습 파일럿 대상은 Xception만. 한계: oracle w, seed 하나, 고정 Baseline probe.
