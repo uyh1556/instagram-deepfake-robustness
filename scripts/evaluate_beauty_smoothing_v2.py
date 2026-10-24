@@ -12,6 +12,8 @@ The original (normal) condition is inferred once per checkpoint. Per (checkpoint
 (analyze_smoothing_threshold_shift.measure). Test labels only score; nothing is selected on the test.
 """
 import argparse
+import hashlib
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -24,6 +26,7 @@ import beauty_smoothing_v2 as v2
 import build_beauty_smoothing_v2_cache as builder
 import ffpp_c23_smoothing_source_ablation as ablation
 import ffpp_c23_smoothing_v2_diagonal as diagonal
+import nonskin_fusion_v2 as nsf
 
 engine, base, evaluation = ablation.engine, ablation.base, ablation.evaluation
 ROOT = Path(__file__).resolve().parents[1]
@@ -74,7 +77,9 @@ def checkpoints(args, name):
     out = [('baseline', None, None, initial['model_state_dict'], initial_hash)]
     if args.runs_root is not None:
         for train_filter in args.train_filters:
-            for label, _, _ in diagonal.variants(args.strategies, args.fc_weights, args.fc_ramp_epochs, args.adv_weights, args.adv_ramp_epochs, args.proj_ks):
+            for label, strategy, _ in diagonal.variants(args.strategies, args.fc_weights, args.fc_ramp_epochs, args.adv_weights, args.adv_ramp_epochs, args.proj_ks):
+                if strategy == nsf.LABEL:   # post-hoc fusion of saved rank predictions, see fused_rows
+                    continue
                 weights, digest, epoch = diagonal.completed_checkpoint(args.runs_root, name, train_filter, label, args.seed, initial_hash,
                                                                        args.checkpoint)
                 suffix = '' if args.checkpoint == 'best' else f'#last_epoch{epoch}'
@@ -105,6 +110,41 @@ def predict(args, frame, name, label, weights, checkpoint_hash, cache, filt, con
     return raw
 
 
+def fused_rows(args, frame, name, labels):
+    """aug_pair_rank_nsf@filter: saved aug_pair_rank predictions fused with the per-frame non-skin score (no inference
+    of the rank model); written as ordinary prediction CSVs so summaries, curves and seed means treat it like any run."""
+    if args.runs_root is None or nsf.LABEL not in args.strategies or args.checkpoint != 'best':
+        return []
+    if 'aug_pair_rank' not in args.strategies:
+        raise ValueError(f'{nsf.LABEL} needs aug_pair_rank in --strategies (it fuses its predictions)')
+    sub = argparse.Namespace(**{**vars(args), 'batch_size': args.eval_batch_size, 'work_dir': args.nsf_work_dir})
+    nonskin = nsf.dataset_scores(sub, name, args.dataset, frame, args.data_root)
+    rows = []
+    for train_filter in args.train_filters:
+        run = args.runs_root/diagonal.run_name(name, train_filter, nsf.LABEL, args.seed)
+        if not (run/'completed.json').is_file():
+            raise FileNotFoundError(f'Build {nsf.LABEL} first (nonskin_fusion_v2.py): {run}')
+        done, config = json.loads((run/'completed.json').read_text()), json.loads((run/'config.json').read_text())
+        digest = hashlib.sha256(f"{config['source_checkpoint_sha256']}|{config['scorer_pickle_sha256']}|{done['weight']}".encode()).hexdigest()
+        label = f'{nsf.LABEL}@{train_filter}'
+        margins = {}
+        for filt, condition in [(None, 'normal'), *[(f, c) for f in v2.FILTERS for c in v2.LEVELS]]:
+            stem = 'normal' if filt is None else f'{filt}_{condition}'
+            rank = pd.read_csv(args.output_root/f'{name}_aug_pair_rank@{train_filter}_{stem}.csv', dtype={'crop_path': str})
+            if rank.crop_path.tolist() != frame.crop_path.tolist() or rank.checkpoint_sha256.iloc[0] != config['source_checkpoint_sha256']:
+                raise ValueError(f'Saved rank predictions do not match the {nsf.LABEL} source run: {stem}')
+            out = rank[['crop_path', 'video_id', 'class_index']].copy()
+            out['raw_margin'], out['checkpoint_sha256'] = nsf.fused(rank.raw_margin.to_numpy(), nonskin, done), digest
+            pred = args.output_root/f'{name}_{label}_{stem}.csv'
+            temp = pred.with_suffix('.tmp.csv'); out.to_csv(temp, index=False); temp.replace(pred)
+            margins[(filt, condition)] = out.raw_margin.to_numpy()
+        for filt in v2.FILTERS:
+            measured = shift.measure(labels, {'normal': margins[(None, 'normal')], **{c: margins[(filt, c)] for c in v2.LEVELS}})
+            rows.append(dict(model=name, strategy=label, train_filter=train_filter, method=nsf.LABEL, filter=filt,
+                             held_out=filt != train_filter, **measured, max_gap=max(abs(measured['fp_gap']), abs(measured['fn_gap']))))
+    return rows
+
+
 def evaluate(args):
     frame, provenance = test_inputs(args)
     cache = ready_cache(args)
@@ -126,6 +166,7 @@ def evaluate(args):
             state.clear()
             if args.device == 'cuda':
                 torch.cuda.empty_cache()
+        rows += fused_rows(args, frame, name, labels)
     table = pd.DataFrame(rows)
     stem = args.summary_name.removesuffix('.csv')
     table.to_csv(args.output_root/(f'{stem}.csv' if args.checkpoint == 'best' else f'{stem}_last_diagnostic.csv'), index=False)
@@ -155,6 +196,8 @@ def parse_args(argv=None):
     p.add_argument('--adv-weights', nargs='+', type=float, default=[1.])
     p.add_argument('--adv-ramp-epochs', type=float, default=2.)
     p.add_argument('--proj-ks', nargs='+', type=int, default=[4])
+    p.add_argument('--nsf-work-dir', type=Path, default=Path('/content/nsf_work'), help='face-inner masks of the eval frames (aug_pair_rank_nsf)')
+    p.add_argument('--parse-batch', type=int, default=16)
     p.add_argument('--checkpoint', choices=['best', 'last'], default='best', help='last = diagnostic only (summary_last_diagnostic.csv)')
     p.add_argument('--summary-name', default='summary.csv', help='separate summary per notebook when several share one output folder')
     p.add_argument('--protocol', type=Path, default=ROOT/'configs/ffpp_c23_celebdf_smoothing_v1.json')  # CDF test counts only

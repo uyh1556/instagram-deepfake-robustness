@@ -19,6 +19,8 @@ the smoothing changes to v2 (face-parsing skin mask + one edge-preserving filter
                     backbone to make that impossible, i.e. it removes whatever the linear/MLP probe can detect (cosine
                     consistency left small-magnitude directions on Xception). One run per --adv-weights value, named
                     aug_pair_rank_adv<beta>[_ramp<R>] (--adv-ramp-epochs, same warm-up/patience rule as fc).
+  aug_pair_rank_nsf post-hoc (nonskin_fusion_v2.py, no training here): the aug_pair_rank score fused with a smoothing-
+                    invariant face-internal non-skin score (w = 0.2, fixed 2026-10-25).
   aug_pair_rank_proj post-hoc (ffpp_c23_smoothing_v2_projection.py, no training here): the aug_pair_rank backbone, its top-k
                     smoothing-trace directions removed and the head refit on ORIGINAL frames only (candidate 3 at full data).
 Selection (best.pt): FF++ val (1,200 frames) pooled raw-margin AUC over original + filter-k weak/medium/strong; no
@@ -45,9 +47,9 @@ pool, rank, engine, common, base = ablation.pool, ablation.rank, ablation.engine
 adaptation, evaluation = ablation.adaptation, ablation.evaluation
 ROOT = Path(__file__).resolve().parents[1]
 PROTOCOL = 'ffpp_c23_smoothing_v2_diagonal_v1'
-STRATEGIES = ['aug_single', 'aug_pair', 'aug_pair_rank', 'aug_pair_rank_fc', 'aug_pair_rank_adv', 'aug_pair_rank_proj']
+STRATEGIES = ['aug_single', 'aug_pair', 'aug_pair_rank', 'aug_pair_rank_fc', 'aug_pair_rank_adv', 'aug_pair_rank_proj', 'aug_pair_rank_nsf']
 RANKED = ('aug_pair_rank', 'aug_pair_rank_fc', 'aug_pair_rank_adv')
-MAIN_STRATEGIES = STRATEGIES[:4]        # main diagonal experiment; adv/proj were pilots only (both failed, RESEARCH_CONTEXT 2026-10-24)
+MAIN_STRATEGIES = [*STRATEGIES[:4], 'aug_pair_rank_nsf']   # main diagonal; adv/proj were pilots only (failed, RESEARCH_CONTEXT 2026-10-24)
 FC_WEIGHT, FC_RAMP = 100., 2.          # method A fixed after the pilots: lambda 100, 2 warm-up epochs, same for all backbones
 CONDITIONS = engine.CONDITIONS          # normal, smooth_weak, smooth_medium, smooth_strong
 CLEAN_PROBABILITY = ablation.CLEAN_PROBABILITY
@@ -231,8 +233,9 @@ def train(args):
             raise ValueError('Baseline/source mismatch')
         for label, strategy, weight in variants(args.strategies, args.fc_weights, args.fc_ramp_epochs, args.adv_weights,
                                                 args.adv_ramp_epochs, args.proj_ks):
-            if strategy == 'aug_pair_rank_proj':
-                print('=== SKIP', label, '(post-hoc: run ffpp_c23_smoothing_v2_projection.py after aug_pair_rank) ===', flush=True)
+            if strategy in ('aug_pair_rank_proj', 'aug_pair_rank_nsf'):
+                tool = 'ffpp_c23_smoothing_v2_projection.py' if strategy == 'aug_pair_rank_proj' else 'nonskin_fusion_v2.py'
+                print('=== SKIP', label, f'(post-hoc: run {tool} after aug_pair_rank) ===', flush=True)
                 continue
             args.fc_weight = weight if strategy == 'aug_pair_rank_fc' else 0.
             args.adv_weight = weight if strategy == 'aug_pair_rank_adv' else 0.
