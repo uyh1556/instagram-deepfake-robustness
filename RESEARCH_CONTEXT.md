@@ -866,3 +866,19 @@ cdf_dev, bilateral 학습 run seed42, oracle w. 나쁜 쪽 교차 AUC bil·WMF·
 scripts/nonskin_fusion_v2.py + 평가 스크립트 fused_rows: 끝난 aug_pair_rank 예측과 얼굴 안 비피부(face_inner) 점수의 고정 융합을 대각선 조건 aug_pair_rank_nsf로 추가(MAIN_STRATEGIES). 학습 없음, rank run이 있는 모든 필터·seed에 자동.
 고정 설정(이 시점 이후 변경 금지, cdf_test를 이 설정으로 처음 봄): face_inner, w=0.2, 비피부 점수기 = Baseline seed42 특징 + FF++ train 2,000장(균형, seed42) 표준화 로지스틱 C=1, 백본당 1개(runs/<diagonal>_<model>/nonskin_probe), z = FF++ val 1,200장 원본(rank는 run마다, 점수기는 백본마다). w=.2는 cdf_dev bilateral seed42에서 "세 백본 모두 원본 AUC 손실 없는 가장 큰 w"로 고른 값(백본별 최적 아님: Xception은 DT가 w=.5까지 단조 증가, DINO는 w>.2에서 원본 AUC 하락).
 보고 지표: 나쁜 쪽 교차 AUC(주), 원본 AUC(제약), 점수 이동·뒤집힘(보조). 흔적 프로브는 nsf에서 의미 없음(점수 단계 융합).
+
+## aug_pair_rank_nsf cdf_test seed42: CLIP·DINO 16칸 전부 개선 (2026-10-25)
+고정 설정(w=.2, face_inner) 그대로, CDF test 첫 평가. 나쁜 쪽 교차 AUC bil·WMF·FGS·DT, rank → nsf (학습 필터별).
+CLIP
+- bil: 원본 .753→.763 | .668→.686 · .639→.659 · .578→.605 · .715→.727
+- WMF: .780→.783 | .653→.669 · .694→.704 · .619→.639 · .763→.766
+- FGS: .772→.780 | .614→.636 · .633→.654 · .677→.692 · .722→.734
+- DT: .794→.793 | .626→.646 · .655→.669 · .614→.636 · .747→.748
+DINO
+- bil: .748→.765 | .741→.758 · .720→.741 · .555→.589 · .552→.598
+- WMF: .750→.767 | .721→.740 · .723→.743 · .561→.595 · .571→.609
+- FGS: .713→.735 | .699→.722 · .613→.649 · .675→.700 · .478→.536
+- DT: .757→.770 | .702→.720 · .689→.706 · .560→.594 · .705→.724
+요약: 32칸 모두 개선(CLIP +.001~+.027, DINO +.017~+.058), 원본 AUC는 CLIP -.001~+.009·DINO +.013~+.021. 처음 보는 DT 세탁도 DINO에서 완화(bil 학습 DT 가짜 -0.80σ→-0.73σ, 교차 +.046). max|gap|은 약 10% 감소에 그침 — 이득의 대부분은 상보 정보로 원본·교차 AUC가 함께 오른 것.
+fc 대비: DINO는 4개 학습 필터 모두 nsf가 fc보다 원본·교차 AUC 전부 높음. CLIP은 bil 학습에서 fc가 bil·WMF 교차 AUC가 더 높음(.747/.717 vs .686/.659), FGS 학습에서 fc가 3필터 우세, WMF·DT 학습은 nsf 우세.
+DINO는 cdf_dev(이득 작음)보다 cdf_test 이득이 큼 — cdf_test의 DINO Baseline이 더 약해(.728 vs .853) 보완 여지가 큼. seed 하나, Xception 미평가.
