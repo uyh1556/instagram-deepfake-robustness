@@ -829,3 +829,13 @@ FF++ Baseline seed42, 피부(+코) 마스크 회색 가림(평균 면적 crop의
 피부 가림 결과(대체 불가) 후 사용자 질문: 피부 밖 단서가 "대체"가 아니라 "보조"는 되는가 — 별도 가설로, 결과 전에 기준을 정해 검정. scripts/diagnose_nonskin_fusion.py + notebooks/diagnose_nonskin_fusion(세 백본, 학습 없음).
 피부 밖 입력 2종: noskin(피부+코만 회색, 머리카락·배경 포함) / face_inner(눈·눈썹·입술·입 안만, 같은 SegFormer 파싱). 각각 Baseline 특징 + FF++ train 2,000장 로지스틱 probe. 전체 얼굴 Baseline 점수(cdf_dev 2,000장, 원본 + 4필터 약중강)와 (1-w)z + w z 융합, z는 FF++ val 원본 통계, w ∈ {0,.1,...,.5}. 피부 밖 점수는 v2 스무딩에 구조적으로 불변.
 사전 판정 기준: 어떤 w>0에서 원본 AUC가 w=0 대비 -0.01 이내 + 4필터 중 3개 이상 나쁜 쪽 교차 AUC +0.02 이상. w를 cdf_dev에서 고르는 상한(oracle) 검사라 불합격이면 방향 폐기, 통과는 학습 파일럿 근거일 뿐. face_inner로도 통과해야 "얼굴 안 합성 단서가 보조"라고 말함(noskin만이면 배경 지름길 가능).
+
+## 피부 밖 점수 융합 결과: Xception·CLIP 통과, DINO 불합격 (2026-10-25)
+cdf_dev, Baseline seed42, w는 cdf_dev 위 oracle. 나쁜 쪽 교차 AUC bil·WMF·FGS·DT, w=0(전체 얼굴만) → 통과 w.
+- Xception face_inner w=.3 통과: 원본 .801 → .808(+.007), .559→.597 / .694→.716 / .387→.444 / .731→.748(DT +.016, 기준 미달) — 3필터. noskin은 2필터로 불합격(배경 포함이 오히려 나쁨).
+- CLIP noskin w=.1 통과: 원본 .801 → .803, .505→.573 / .476→.558 / .459→.541 / .575→.626 — 4필터. face_inner w=.1도 통과: 원본 .805(+.004), .563 / .542 / .532 / .617.
+- DINO 둘 다 불합격: 원본 그대로, 개선 FGS +.02·DT +.01 수준(DINO Baseline은 cdf_dev에서 bil·WMF 쏠림이 원래 작음).
+- 피부 밖 단독 AUC(cdf_dev): Xception noskin .648 / face_inner .669, CLIP .644 / .648, DINO .682 / .619.
+해석: 얼굴 안 비피부(눈·눈썹·입술·입 안)만으로도 Xception·CLIP에서 보조 효과 — 배경 지름길이 아님. 원본 AUC가 조금 오름 → 피부 단서와 상보적. 효과는 Baseline 쏠림이 클수록 큼(희석 효과). 크기는 증강 학습보다 작음(CLIP cdf_dev bil: 융합 .563~.573 vs rank .706). DT 세탁 완화는 작음(Xception DT 가짜 -0.44σ → -0.34σ at w=.3).
+한계: w를 cdf_dev에서 고른 상한, seed 하나, 고정 Baseline 특징 위 선형 probe.
+다음 확인(학습 전): 같은 융합을 rank 모델 위에 얹어도 추가 이득이 남는지(증강이 이미 쏠림을 줄인 뒤에도 상보 효과가 있는지).
