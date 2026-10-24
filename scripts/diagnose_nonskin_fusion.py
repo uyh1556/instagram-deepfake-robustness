@@ -12,6 +12,9 @@ grid of w. The non-skin score is the same for every smoothing condition by const
 Reported per filter: clean AUC and the worse cross AUC (min of strong-real vs clean-fake, clean-real vs strong-fake).
 Because w is picked over a grid ON cdf_dev, this is an oracle upper bound: a fail means the direction is dead; a pass
 only makes it worth a trained pilot. No Celeb-DF test frame is used.
+--full-model rank: the full-face score comes from the finished v2 diagonal aug_pair_rank run (--train-filter, same seed)
+instead of the baseline; the non-skin probe stays on the baseline features. w = 0 is then rank alone, so the verdict asks
+whether non-skin evidence still adds on top of smoothing augmentation (rank already removed much of the shift).
 """
 import argparse
 from pathlib import Path
@@ -101,6 +104,12 @@ class Inputs(Dataset):
         return self.transform(image), index
 
 
+def load(args, name, weights):
+    model, transform = base.build_model(name, pretrained=False)
+    model.load_state_dict(weights, strict=True)
+    return model.to(args.device).eval(), transform
+
+
 def worse(row):
     return min(row['fp_cross_auc'], row['fn_cross_auc'])
 
@@ -114,10 +123,14 @@ def run(args):
     y = cdf.class_index.astype(int).to_numpy()
     rows = []
     for name in args.models:
-        initial, _ = evaluation.checkpoint(argparse.Namespace(runs_root=args.baseline_runs_root, seed=args.baseline_seed), name)
-        model, transform = base.build_model(name, pretrained=False)
-        model.load_state_dict(initial['model_state_dict'], strict=True)
-        model.to(args.device).eval()
+        initial, initial_hash = evaluation.checkpoint(argparse.Namespace(runs_root=args.baseline_runs_root, seed=args.baseline_seed), name)
+        if args.full_model == 'rank':
+            full_weights, _, epoch = diagonal.completed_checkpoint(args.runs_parent/f'ffpp_c23_smoothing_v2_diagonal_{name}', name,
+                                                                    args.train_filter, 'aug_pair_rank', args.seed, initial_hash)
+            print(f'{name}: full-face score from aug_pair_rank@{args.train_filter} seed{args.seed} (epoch {epoch})', flush=True)
+        else:
+            full_weights = initial['model_state_dict']
+        model, transform = load(args, name, full_weights)
 
         def score(s, mode, filt=None, strength=0.):
             f, root, d = sets[s]
@@ -130,6 +143,9 @@ def run(args):
             for condition, strength in v2.LEVELS.items():
                 full[(filt, condition)] = score('cdf_dev', 'full', filt, strength)[1]
         zf = lambda m: (m-val_full.mean())/val_full.std()
+        if args.full_model == 'rank':   # non-skin probe always on the baseline features
+            del model
+            model, transform = load(args, name, initial['model_state_dict'])
         for variant in VARIANTS:
             train_f = score('ffpp_train', variant)[0]
             probe = make_pipeline(StandardScaler(), LogisticRegression(max_iter=3000, C=1.))
@@ -150,11 +166,12 @@ def run(args):
         del model
         if args.device == 'cuda':
             torch.cuda.empty_cache()
-    table = pd.DataFrame(rows)
+    table = pd.DataFrame(rows).assign(full_model=args.full_model if args.full_model == 'baseline' else f'aug_pair_rank@{args.train_filter}')
     args.output_root.mkdir(parents=True, exist_ok=True)
-    table.to_csv(args.output_root/f'nonskin_fusion_seed{args.seed}.csv', index=False)
+    stem = 'nonskin_fusion' if args.full_model == 'baseline' else f'nonskin_fusion_on_rank_{args.train_filter}'
+    table.to_csv(args.output_root/f'{stem}_seed{args.seed}.csv', index=False)
     verdict = decide(table)
-    verdict.to_csv(args.output_root/f'nonskin_fusion_verdict_seed{args.seed}.csv', index=False)
+    verdict.to_csv(args.output_root/f'{stem}_verdict_seed{args.seed}.csv', index=False)
     with pd.option_context('display.width', 220, 'display.max_rows', 300):
         print(table.pivot_table(index=['model', 'variant', 'w'], columns='filter', values='worse_cross_auc', sort=False)[v2.FILTERS]
               .join(table.groupby(['model', 'variant', 'w'], sort=False).normal_auc.first()).round(3).to_string())
@@ -187,12 +204,17 @@ def parse_args(argv=None):
         p.add_argument('--'+field, type=Path, required=True)
     p.add_argument('--cache-root', type=Path, default=Path('/content/beauty_smoothing_v2_cache'))
     p.add_argument('--work-dir', type=Path, default=Path('/content/nonskin_fusion_work'))
+    p.add_argument('--full-model', choices=['baseline', 'rank'], default='baseline')
+    p.add_argument('--runs-parent', type=Path, help='rank: folder holding ffpp_c23_smoothing_v2_diagonal_<model>')
+    p.add_argument('--train-filter', choices=v2.FILTERS, default='bilateral', help='rank: training filter of the aug_pair_rank run')
     p.add_argument('--models', nargs='+', choices=list(base.PREPROCESS), default=['xception', 'clip_b16', 'dinov2_b14'])
     for field, default in [('seed', 42), ('baseline-seed', 42), ('train-images', 2000), ('val-images', 1200), ('cdf-images', 2000),
                            ('batch-size', 64), ('workers', 2), ('parse-batch', 16)]:
         p.add_argument('--'+field, type=int, default=default)
     p.add_argument('--device', choices=['cuda', 'cpu'], default='cuda')
     a = p.parse_args(argv)
+    if a.full_model == 'rank' and a.runs_parent is None:
+        p.error('--full-model rank needs --runs-parent')
     if a.device == 'cuda' and not torch.cuda.is_available():
         raise RuntimeError('Select a GPU runtime')
     return a

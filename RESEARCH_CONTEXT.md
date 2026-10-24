@@ -839,3 +839,7 @@ cdf_dev, Baseline seed42, w는 cdf_dev 위 oracle. 나쁜 쪽 교차 AUC bil·WM
 해석: 얼굴 안 비피부(눈·눈썹·입술·입 안)만으로도 Xception·CLIP에서 보조 효과 — 배경 지름길이 아님. 원본 AUC가 조금 오름 → 피부 단서와 상보적. 효과는 Baseline 쏠림이 클수록 큼(희석 효과). 크기는 증강 학습보다 작음(CLIP cdf_dev bil: 융합 .563~.573 vs rank .706). DT 세탁 완화는 작음(Xception DT 가짜 -0.44σ → -0.34σ at w=.3).
 한계: w를 cdf_dev에서 고른 상한, seed 하나, 고정 Baseline 특징 위 선형 probe.
 다음 확인(학습 전): 같은 융합을 rank 모델 위에 얹어도 추가 이득이 남는지(증강이 이미 쏠림을 줄인 뒤에도 상보 효과가 있는지).
+
+## rank 위 피부 밖 융합 확인 코드와 사전 기준 (2026-10-25)
+diagnose_nonskin_fusion.py --full-model rank: 전체 얼굴 점수를 v2 대각선 aug_pair_rank@bilateral seed42 run에서, 피부 밖 probe는 Baseline 특징 그대로. 노트북 diagnose_nonskin_fusion_on_rank. 출력 nonskin_fusion_on_rank_bilateral_{seed42,verdict_seed42}.csv.
+사전 판정 기준(결과 전 확정): 주 변형 face_inner(noskin은 참고). 어떤 w>0에서 원본 AUC가 rank 단독(w=0) 대비 -0.01 이내 + 4필터 중 3개 이상 나쁜 쪽 교차 AUC가 rank 단독 대비 +0.02 이상이면 통과. cdf_dev oracle w라 불합격 백본은 방향 폐기, 통과 백본만 rank + 피부 가림 보조 손실 학습 파일럿 대상.

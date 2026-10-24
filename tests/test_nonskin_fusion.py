@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'scripts'))
 import beauty_smoothing_v2 as v2
 import build_beauty_smoothing_v2_cache as builder
 import diagnose_nonskin_fusion as fusion
+import ffpp_c23_smoothing_v2_diagonal as diagonal
 import test_beauty_smoothing_v2 as v2_fixture
 import test_smoothing_rank_sda_pool_v2 as fixture
 
@@ -60,7 +61,7 @@ class NonskinFusionTests(unittest.TestCase):
                                   baseline_runs_root=a.baseline_runs_root, archive_dir=self.root/'drive', output_root=self.root/'fus',
                                   cache_root=self.root/'cache_fus', work_dir=self.root/'work', models=['dinov2_b14'], seed=42,
                                   baseline_seed=42, train_images=16, val_images=16, cdf_images=12, batch_size=4, workers=0,
-                                  parse_batch=5, device='cpu')
+                                  parse_batch=5, device='cpu', full_model='baseline', runs_parent=None, train_filter='bilateral')
         with patch.object(fusion, 'InnerParser', FakeInner):
             table = fusion.run(args)
         self.assertEqual(len(table), len(fusion.VARIANTS)*len(fusion.WEIGHTS)*len(v2.FILTERS))
@@ -71,6 +72,21 @@ class NonskinFusionTests(unittest.TestCase):
         self.assertTrue((self.root/'fus/nonskin_fusion_verdict_seed42.csv').is_file())
         with patch.object(fusion, 'InnerParser', side_effect=AssertionError('reparsed')):
             fusion.parse_inner(args, fusion.occlusion.frames(args))   # masks are reused
+        # On top of a finished aug_pair_rank run: w = 0 is rank alone.
+        runs = self.root/'runs_parent'/'ffpp_c23_smoothing_v2_diagonal_dinov2_b14'
+        with patch.object(v2, 'full', side_effect=v2_fixture.fake_full):
+            diagonal.train(argparse.Namespace(source_root=a.source_root, baseline_runs_root=a.baseline_runs_root, runs_root=runs,
+                manifest_root=self.root/'diag_manifests', archive_dir=self.root/'drive', source_validation=None, cache_root=self.root/'cache_train',
+                train_filter='bilateral', models=['dinov2_b14'], strategies=['aug_pair_rank'], seed=42, baseline_seed=42, epochs=1, patience=3,
+                source_images=16, val_images=16, batch_size=4, workers=0, encoder_lr=1e-3, head_lr=1e-3, weight_decay=1e-4, ranking_weight=.25,
+                fc_weights=[1.], fc_ramp_epochs=0., adv_weights=[1.], adv_ramp_epochs=2., adv_lr=1e-3, proj_ks=[4], replace_runs=[], device='cpu'))
+        on_rank = argparse.Namespace(**{**vars(args), 'full_model': 'rank', 'runs_parent': self.root/'runs_parent'})
+        with patch.object(fusion, 'InnerParser', side_effect=AssertionError('reparsed')):
+            ranked = fusion.run(on_rank)
+        self.assertEqual(set(ranked.full_model), {'aug_pair_rank@bilateral'})
+        self.assertTrue((self.root/'fus/nonskin_fusion_on_rank_bilateral_verdict_seed42.csv').is_file())
+        # The non-skin probe is the same (baseline features) in both runs.
+        self.assertTrue(np.allclose(ranked.nonskin_alone_auc, table.nonskin_alone_auc))
 
 
 if __name__ == '__main__':
