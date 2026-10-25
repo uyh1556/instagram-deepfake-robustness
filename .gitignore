@@ -17,3 +17,6 @@ __pycache__/
 /Celeb-DF-v2/
 /Celeb-DF.zip
 /Celeb-DF-v2.zip
+
+# Proposal deck drafts and figures (local only)
+docs/proposal/
