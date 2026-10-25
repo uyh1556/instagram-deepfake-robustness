@@ -882,3 +882,10 @@ DINO
 요약: 32칸 모두 개선(CLIP +.001~+.027, DINO +.017~+.058), 원본 AUC는 CLIP -.001~+.009·DINO +.013~+.021. 처음 보는 DT 세탁도 DINO에서 완화(bil 학습 DT 가짜 -0.80σ→-0.73σ, 교차 +.046). max|gap|은 약 10% 감소에 그침 — 이득의 대부분은 상보 정보로 원본·교차 AUC가 함께 오른 것.
 fc 대비: DINO는 4개 학습 필터 모두 nsf가 fc보다 원본·교차 AUC 전부 높음. CLIP은 bil 학습에서 fc가 bil·WMF 교차 AUC가 더 높음(.747/.717 vs .686/.659), FGS 학습에서 fc가 3필터 우세, WMF·DT 학습은 nsf 우세.
 DINO는 cdf_dev(이득 작음)보다 cdf_test 이득이 큼 — cdf_test의 DINO Baseline이 더 약해(.728 vs .853) 보완 여지가 큼. seed 하나, Xception 미평가.
+
+## 본 실험 3 seed 정리 (cdf_test, seed 42/43/44, summarize_v2_diagonal.py; 2026-10-25)
+seed 평균(±표준편차는 v2_diagonal_headline.csv). clean = 원본 AUC, diag = 학습 필터 나쁜 쪽 교차 AUC, held = 처음 보는 3필터(12칸), DT_held = 처음 보는 DT, all = 16칸, fp_flip = 강 스무딩 진짜→가짜 뒤집힘, >rank = 16칸 중 rank보다 높은 칸, e0 = epoch 0 run 수(/12).
+CLIP: Baseline clean .798 all .513 fp .296 | single .769/.694/.652/.736/.663 fp .078 >rank 5 | pair .766/.727/.671/.736/.685 fp .054 >rank 15 | rank .764/.708/.658/.734/.671 fp .062 | fc .763/.665/.618/.695/.630 fp .121 e0 4 >rank 7 | nsf .770/.718/.675/.743/.686 fp .054 >rank 16
+DINO: Baseline .728 all .591 fp .088 | single .742/.704/.616/.544/.638 e0 1 | pair .734/.695/.612/.536/.633 | rank .742/.702/.614/.535/.636 e0 1 | fc .721/.668/.603/.548/.619 e0 4 >rank 4 | nsf .759/.723/.646/.582/.665 fp .040 >rank 16
+Xception: Baseline .660 all .463 fp .195 | single .632/.618/.429/.340/.476 | pair .638/.629/.443/.341/.490 | rank .633/.625/.434/.331/.482 | fc .631/.513/.445/.492/.462 fp .136 e0 7 >rank 5 | nsf .654/.647/.469/.375/.513 fp .055 >rank 16
+결론(3 seed): nsf가 세 백본 모두 held·all 최고, 16칸 전부 rank 이상(평균 +.015 CLIP / +.029 DINO / +.031 Xception), 원본 AUC도 rank보다 높음(+.006/+.017/+.021). fc는 세 백본 모두 all이 rank보다 낮고 분산 큼, epoch 0 run 15/36, fp_flip은 오히려 rank보다 큼(CLIP .121, Xception .136). CLIP에서는 pair가 rank보다 나음(15/16) → 순위 손실 이득 없음. 남은 한계: 처음 보는 DT 세탁(Xception DT_held .33~.37, DINO .53~.58 — nsf가 완화하지만 0.5 근처/미만), Xception은 모든 조건의 held가 .5 미만, CLIP·Xception은 학습 조건 모두 Baseline 원본 AUC보다 낮음(nsf가 차이를 가장 줄임).
