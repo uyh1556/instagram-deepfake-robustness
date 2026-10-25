@@ -48,7 +48,7 @@ def pm(r,c): return '' if pd.isna(r[c+'_mean']) else f"{r[c+'_mean']:.3f}±{0 if
 for m,g in h.groupby('model',sort=False):
     rows=[{'조건':name.get(r.method,r.method),'clean':pm(r,'clean_auc'),'diag':pm(r,'diag_worse'),'held':pm(r,'heldout_worse'),
            'DT_held':pm(r,'dt_heldout'),'all':pm(r,'all_worse'),'fp_flip':pm(r,'fp_flip'),'epoch0':int(r.epoch0_runs),
-           '>rank':'' if pd.isna(r.cells_better_than_rank) else f"{int(r.cells_better_than_rank)}/16"} for r in g.itertuples()]
+           '>rank':'' if pd.isna(r.cells_better_than_rank) else f"{int(r.cells_better_than_rank)}/16"} for _,r in g.iterrows()]
     display(Markdown(f'### {m} (seeds {int(g.seeds.max())})')); display(pd.DataFrame(rows).set_index('조건'))
 s=pd.read_csv(OUT/'v2_diagonal_seed_means.csv')
 F=['bilateral','weighted_median','fast_global','domain_transform']; S=['bil','WMF','FGS','DT']
