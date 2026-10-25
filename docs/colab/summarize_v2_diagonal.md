@@ -62,8 +62,8 @@ for i,m in enumerate(models):
             for c in range(4):
                 v=g.values[r,c]; a.text(c,r,'' if pd.isna(v) else f'{v:.2f}',ha='center',va='center',color='white' if v<.7 else 'black',fontsize=9)
         a.set_xticks(range(4)); a.set_xticklabels(S); a.set_yticks(range(4)); a.set_yticklabels(S)
-        a.set_title(f'{m} · {name[me]}'); a.set_xlabel('평가 필터' if i==len(models)-1 else ''); a.set_ylabel('학습 필터' if j==0 else '')
-fig.colorbar(im,ax=ax,shrink=.6,label='나쁜 쪽 교차 AUC (seed 평균)')
+        a.set_title(f'{m} · {name[me]}'); a.set_xlabel('eval filter' if i==len(models)-1 else ''); a.set_ylabel('train filter' if j==0 else '')
+fig.colorbar(im,ax=ax,shrink=.6,label='worse cross AUC (seed mean)')
 plt.show()
 print('CSV:',OUT)
 ```
