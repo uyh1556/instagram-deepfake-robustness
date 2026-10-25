@@ -7,6 +7,9 @@ For every backbone x condition: mean +- std over seeds of
   dt_heldout      held-out DT only (the laundering case; mean over the 3 non-DT training filters)
   all_worse       mean over all 16 cells (Baseline: its 4 filters) -- the one-number comparison
   fp_flip/fn_flip decision flips at the clean 5% FPR threshold (strong smoothing), mean over the 16 cells
+  diag_gap/held_gap/all_gap   the shift itself: max|gap| (clean AUC minus the worse cross AUC, either direction)
+  held_real_shift/dt_fake_shift  paired score shift at strong smoothing in clean-real std: reals on held-out filters
+                  (+ = towards fake, false positives) and fakes on held-out DT (- = towards real, laundering)
   epoch0_runs     how many (training filter, seed) runs selected epoch 0 (= identical to the Baseline)
 plus, per backbone, how many of the 16 seed-mean cells beat aug_pair_rank. Writes
   v2_diagonal_seed_means.csv  (backbone x condition x train filter x eval filter, seed mean/std)
@@ -48,7 +51,9 @@ def headline(t):
     for (model, method, seed), g in t.groupby(['model', 'method', 'seed'], sort=False):
         if method == 'baseline':
             rows.append(dict(model=model, method=method, seed=seed, clean_auc=g.normal_auc.iloc[0], all_worse=g.worse_cross_auc.mean(),
-                             fp_flip=g['fp_flip@normal5'].mean(), fn_flip=g['fn_flip@normal5'].mean(), epoch0_runs=0))
+                             fp_flip=g['fp_flip@normal5'].mean(), fn_flip=g['fn_flip@normal5'].mean(), epoch0_runs=0,
+                             all_gap=g.max_gap.mean(), held_real_shift=g.real_shift.mean(),
+                             dt_fake_shift=g[g['filter'].eq('domain_transform')].fake_shift.mean()))
             continue
         diag = g[g['filter'].eq(g.train_filter)]
         held = g[g['filter'].ne(g.train_filter)]
@@ -57,9 +62,12 @@ def headline(t):
                          diag_worse=diag.worse_cross_auc.mean(), heldout_worse=held.worse_cross_auc.mean(),
                          dt_heldout=dt.worse_cross_auc.mean(), all_worse=g.worse_cross_auc.mean(),
                          fp_flip=g['fp_flip@normal5'].mean(), fn_flip=g['fn_flip@normal5'].mean(),
+                         diag_gap=diag.max_gap.mean(), held_gap=held.max_gap.mean(), all_gap=g.max_gap.mean(),
+                         held_real_shift=held.real_shift.mean(), dt_fake_shift=dt.fake_shift.mean(),
                          epoch0_runs=int(g.groupby('train_filter').epoch0.first().sum())))
     per_seed = pd.DataFrame(rows)
-    metrics = ['clean_auc', 'diag_worse', 'heldout_worse', 'dt_heldout', 'all_worse', 'fp_flip', 'fn_flip']
+    metrics = ['clean_auc', 'diag_worse', 'heldout_worse', 'dt_heldout', 'all_worse', 'fp_flip', 'fn_flip',
+               'diag_gap', 'held_gap', 'all_gap', 'held_real_shift', 'dt_fake_shift']
     agg = per_seed.groupby(['model', 'method'], sort=False)
     out = agg[metrics].mean().add_suffix('_mean').join(agg[metrics].std().add_suffix('_sd'))
     out['seeds'] = agg.seed.nunique()
@@ -99,7 +107,10 @@ def run(args):
     with pd.option_context('display.width', 250, 'display.max_columns', 40):
         show = head[['model', 'method', 'seeds', 'epoch0_runs', 'clean_auc_mean', 'diag_worse_mean', 'heldout_worse_mean',
                      'dt_heldout_mean', 'all_worse_mean', 'fp_flip_mean', 'cells_better_than_rank']]
+        gaps = head[['model', 'method', 'diag_gap_mean', 'held_gap_mean', 'all_gap_mean', 'held_real_shift_mean', 'dt_fake_shift_mean']]
         print(show.round(3).to_string(index=False))
+        print('Shift (max|gap|, score shifts in clean-real std):')
+        print(gaps.round(3).to_string(index=False))
     print('Saved:', args.output_root, flush=True)
     return head, means
 

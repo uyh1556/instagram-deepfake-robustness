@@ -55,6 +55,8 @@ class SummaryTests(unittest.TestCase):
             self.assertTrue(np.isnan(h.loc['aug_pair_rank', 'cells_better_than_rank']))
             self.assertEqual(len(means[means.method.eq('aug_pair_rank')]), 16)
             self.assertTrue((root/'out/v2_diagonal_headline.csv').is_file())
+            self.assertAlmostEqual(h.loc['aug_pair_rank_nsf', 'held_real_shift_mean'], .2)
+            self.assertTrue(h.loc['aug_pair_rank_nsf', 'held_gap_mean'] > h.loc['aug_pair_rank_nsf', 'diag_gap_mean'])
 
 
 if __name__ == '__main__':
