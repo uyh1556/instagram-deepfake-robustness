@@ -921,3 +921,11 @@ DINO: pair .730/.630 | eyes-mouth .748/.659 16/16 | full .741/.639 13/16 1/16 | 
 Xception: pair .652/.509 | eyes-mouth .671/.539 16/16 | full .657/.508 6/16 4/16 | face .653/.502 5/16 2/16 | random .652/.509 11/16 0/16
 B alone: full/face are strong (FF++ val .90-.99, CDF clean .64-.79) but shift with smoothing (real shift up to 1.4σ; worst cross often .29-.63); random patch is near chance (.50-.59); eyes-mouth is invariant (worst cross = clean .63-.67). Held-out real shift of the fusion, CLIP: pair .44, eyes-mouth .33, full .54, face .62.
 Pre-registered reading: eyes-mouth above all three controls on all16 for every backbone -> supports "unsmoothed region with manipulation evidence", not a generic two-score ensemble. Full/face raise clean AUC (CLIP, DINO even above eyes-mouth) but not the cross AUC. Xception full beats eyes-mouth only in bil/FGS-trained -> WMF/DT held-out cells. Seed 43/44 pending.
+
+## NSF region controls: 3-seed results (2026-10-29)
+Seed 42/43/44 means, clean AUC / seen4 / unseen12 / all16 worst cross AUC (cells over pair, cells over eyes-mouth; seed-mean cells):
+CLIP: pair .766/.727/.671/.685 | eyes-mouth .771/.734/.686/.698 (16, -) | full .778/.707/.664/.675 (2, 2) | face .789/.695/.646/.658 (2, 2) | random .757/.699/.647/.660 (1, 0)
+DINO: pair .734/.695/.612/.633 | eyes-mouth .752/.717/.643/.661 (16, -) | full .745/.690/.626/.642 (13, 2) | face .755/.700/.627/.645 (12, 3) | random .727/.687/.609/.628 (2, 0)
+Xception: pair .638/.629/.443/.490 | eyes-mouth .659/.651/.477/.521 (16, -) | full .647/.603/.458/.494 (5, 4) | face .642/.602/.449/.487 (5, 2) | random .639/.629/.444/.490 (11, 0)
+Held-out real shift (σ), CLIP: pair .37, eyes-mouth .27, full .49, face .56, random .42. eyes-mouth reproduced the saved pair+NSF numbers in every seed (checked by the script).
+Pre-registered reading holds with three seeds: eyes-mouth is first on seen, unseen and all16 for every backbone; the margin over the best control is +.023 (CLIP), +.016 (DINO), +.027 (Xception) all16, about the seed-42 margins. Full/face raise clean AUC (CLIP face .789 > eyes-mouth .771) but lower the CLIP cross AUC below pair; their few winning cells are DT held-out columns (CLIP WMF->DT) and Xception WMF/DT held-out cells. Random patch ~ pair everywhere (B near chance).
