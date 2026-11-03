@@ -50,6 +50,26 @@ class BuildTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 cache.view(clean, 'v0/f.png', name='bilateral')
 
+    def test_sample_writes_sheet_without_caching(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            data = root/'cdf'
+            rows = []
+            for i in range(4):
+                p = f'v{i}/f.png'
+                (data/p).parent.mkdir(parents=True)
+                Image.fromarray(np.full((12, 10, 3), 10, np.uint8)).save(data/p)
+                rows.append(dict(crop_path=p, roi_status='detected', split='test', video_id=f'v{i}', class_index=str(i % 2)))
+            (data/'manifests').mkdir()
+            pd.DataFrame(rows).to_csv(data/er.builder.MANIFESTS['cdf_test'], index=False)
+            args = er.parse_args(['sample', '--cdf-root', str(data), '--count', '2', '--sample-out', str(root/'s.jpg'),
+                                  '--weights-dir', str(root/'w'), '--device', 'cpu'])
+            with mock.patch.object(er, 'load_retoucher', return_value=(FakeGfpgan(), 'abc')):
+                er.sample(args)
+            with Image.open(root/'s.jpg') as sheet:
+                self.assertEqual(sheet.size, (768, 512))
+            self.assertEqual(sorted(p.name for p in root.iterdir()), ['cdf', 's.jpg'])
+
     def test_frame_seed_is_stable(self):
         self.assertEqual(er.frame_seed('a/b.png'), er.frame_seed('a/b.png'))
         self.assertNotEqual(er.frame_seed('a/b.png'), er.frame_seed('a/c.png'))

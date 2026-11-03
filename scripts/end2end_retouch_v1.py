@@ -194,6 +194,28 @@ def build(args):
           f'(left unchanged) | weights {ident["weights_sha256"][:12]} | preview {args.archive_dir/f"preview_{VIEW}.jpg"}', flush=True)
 
 
+def sample(args):
+    """Quick look before the full build: a few random detected real/fake frames as clean | retouched | |difference| x4.
+    Nothing is cached or written to Drive."""
+    frame = builder.frames(argparse.Namespace(dataset='cdf_test', data_root=args.cdf_root))
+    picks = pd.concat([frame[frame.class_index.eq(c)].sample(args.count//2, random_state=args.sample_seed) for c in ['0', '1']])
+    model, _ = load_retoucher(args)
+    side = 256
+    sheet = Image.new('RGB', (3*side, side*len(picks)), 'white')
+    for i, r in enumerate(picks.to_dict('records')):
+        with Image.open(args.cdf_root/r['crop_path']) as opened:
+            clean = np.asarray(opened.convert('RGB'))
+        out, faces = retouch(model, clean, r['crop_path'])
+        diff = np.clip(np.abs(out.astype(np.int16)-clean).mean(2)*4, 0, 255).astype(np.uint8)
+        for j, a in enumerate([clean, out, np.repeat(diff[..., None], 3, 2)]):
+            sheet.paste(Image.fromarray(a).resize((side, side)), (j*side, i*side))
+        print(f"{i+1}. {'real' if r['class_index'] == '0' else 'fake'} | faces restored {faces} | "
+              f"mean |change| {np.abs(out.astype(np.int16)-clean).mean():.2f} | {r['crop_path']}", flush=True)
+    args.sample_out.parent.mkdir(parents=True, exist_ok=True)
+    sheet.save(args.sample_out, quality=92)
+    print('Saved:', args.sample_out, '(columns: clean | GFPGAN | |difference| x4)', flush=True)
+
+
 def restore(args):
     cache = RetouchCache(args.cache_root)
     if not (cache.root/VIEW/'complete.json').is_file():
@@ -404,11 +426,11 @@ def report(args):
 
 def parse_args(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument('action', choices=['build', 'evaluate', 'report'])
+    p.add_argument('action', choices=['sample', 'build', 'evaluate', 'report'])
     p.add_argument('--model', choices=['xception', 'clip_b16', 'dinov2_b14'])
     for key in ['runs-root', 'evaluation-root', 'pair-nsf-root', 'output-root', 'baseline-runs-root', 'v2-archive-dir']:
         p.add_argument('--'+key, type=Path)
-    p.add_argument('--archive-dir', type=Path, required=True, help='Drive folder of cdf_test_gfpgan.tar')
+    p.add_argument('--archive-dir', type=Path, help='Drive folder of cdf_test_gfpgan.tar')
     p.add_argument('--cdf-root', type=Path, default=Path('/content/celebdf_v2_face_crops16_v1'))
     p.add_argument('--cache-root', type=Path, default=Path('/content/end2end_retouch_cache'))
     p.add_argument('--v2-cache-root', type=Path, default=Path('/content/beauty_smoothing_v2_cache'))
@@ -417,9 +439,14 @@ def parse_args(argv=None):
     p.add_argument('--seeds', nargs='+', type=int, default=[42, 43, 44])
     for key, default in [('batch-size', 64), ('workers', 2), ('parse-batch', 16)]:
         p.add_argument('--'+key, type=int, default=default)
+    p.add_argument('--count', type=int, default=6, help='sample: frames shown (half real, half fake)')
+    p.add_argument('--sample-seed', type=int, default=0)
+    p.add_argument('--sample-out', type=Path, default=Path('/content/gfpgan_sample.jpg'))
     p.add_argument('--device', choices=['cuda', 'cpu'], default='cuda')
     a = p.parse_args(argv)
-    if a.action != 'build':
+    if a.action != 'sample' and a.archive_dir is None:
+        p.error(f'{a.action} needs --archive-dir')
+    if a.action not in ['sample', 'build']:
         need = ['model', 'runs_root', 'evaluation_root', 'pair_nsf_root', 'output_root', 'baseline_runs_root', 'v2_archive_dir']
         missing = [k for k in need if getattr(a, k) is None]
         if missing:
@@ -432,4 +459,4 @@ def parse_args(argv=None):
 
 if __name__ == '__main__':
     args = parse_args()
-    {'build': build, 'evaluate': evaluate, 'report': report}[args.action](args)
+    {'sample': sample, 'build': build, 'evaluate': evaluate, 'report': report}[args.action](args)

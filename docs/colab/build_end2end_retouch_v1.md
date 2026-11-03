@@ -5,6 +5,7 @@ CDF 공식 test 8,288장 중 얼굴 검출 프레임 전체를 **GFPGAN v1.4**(e
 - fallback 프레임은 v2와 같이 보정 안 함. GFPGAN이 얼굴을 못 찾은 프레임은 원본 그대로(개수 출력)
 - 결과: `manifests/end2end_retouch_v1/cache/cdf_test_gfpgan.tar` + `preview_gfpgan.jpg`(위: 원본, 아래: 보정)
 - 이 tar가 기준이고 다시 만들지 않음. 끊기면 Cell 1부터 다시 실행하면 이어서 함
+- Cell 4로 몇 장 먼저 확인한 뒤 Cell 5(전체)를 실행
 - 끝나면 백본별 평가 노트북 3개(`end2end_retouch_v1_<model>`)를 동시에 실행
 
 ## Cell 1 — 코드·GFPGAN 설치
@@ -54,7 +55,18 @@ print('CDF test ready', flush=True)
 
 ```
 
-## Cell 4 — GFPGAN 보정 + tar 저장 (L4 기준 대략 20~40분)
+## Cell 4 — 샘플 미리보기 (전체 실행 전, 진짜 3장 + 가짜 3장, 1~2분). 열: 원본 | GFPGAN | 차이×4
+
+```python
+SAMPLE_SEED = 0   # 다른 샘플을 보려면 숫자만 바꿔 다시 실행
+!python -u "{SCRIPT}" sample --cdf-root "{CDF_ROOT}" --count 6 --sample-seed {SAMPLE_SEED} --sample-out /content/gfpgan_sample.jpg
+assert _exit_code==0, '샘플 실패: GFPGAN 설치/GPU 확인'
+from IPython.display import Image as Show, display
+display(Show(filename='/content/gfpgan_sample.jpg'))
+
+```
+
+## Cell 5 — GFPGAN 보정 + tar 저장 (T4 기준 대략 15~30분)
 
 ```python
 !python -u "{SCRIPT}" build --archive-dir "{ARCHIVE}" --cdf-root "{CDF_ROOT}"
@@ -62,7 +74,7 @@ assert _exit_code==0, 'GFPGAN 보정 실패'
 
 ```
 
-## Cell 5 — 미리보기 (위: 원본, 아래: GFPGAN)
+## Cell 6 — 전체 결과 미리보기 (위: 원본, 아래: GFPGAN)
 
 ```python
 from IPython.display import Image as Show, display
