@@ -34,9 +34,9 @@ class MaskTests(unittest.TestCase):
         side = 400
         original = pa.v2.cv2.GaussianBlur(hard.astype(np.float32), (0, 0), max(1., pa.v2.PARSER['blur_fraction']*side)).clip(0, 1)
         np.testing.assert_array_equal(pa.keep_mask(hard), pa.v2.image_to_mask(pa.v2.mask_to_image(original)))
-        areas = [(pa.keep_mask(hard, pa.MORPH.get(v, 0.)) > .5).sum() for v in ['erode1', 'erode05', 'segformer', 'dilate05', 'dilate1']]
+        areas = [(pa.keep_mask(hard, pa.MORPH.get(v, 0.)) > .5).sum() for v in ['erode1', 'segformer', 'dilate1']]
         self.assertEqual(areas, sorted(areas))
-        self.assertEqual(len(set(areas)), 5)
+        self.assertEqual(len(set(areas)), 3)
 
     def test_landmark_mask_fills_polygons(self):
         self.assertFalse(pa.landmark_mask(None, (20, 30)).any())
@@ -47,7 +47,7 @@ class MaskTests(unittest.TestCase):
         self.assertFalse(m[2, 2])
 
     def test_variant_order(self):
-        self.assertEqual(pa.VARIANTS, ['segformer', 'erode1', 'erode05', 'dilate05', 'dilate1', 'bisenet', 'mediapipe'])
+        self.assertEqual(pa.VARIANTS, ['segformer', 'erode1', 'dilate1', 'bisenet', 'mediapipe'])
 
 
 class BuildTests(unittest.TestCase):

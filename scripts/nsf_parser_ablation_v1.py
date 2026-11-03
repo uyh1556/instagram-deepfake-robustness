@@ -3,11 +3,11 @@
 pair+NSF fuses the pair detector score A with a score B from the face-internal non-skin parts (eyes, brows, lips,
 mouth; rest filled grey). Here only the parser behind B's mask changes. Variants, in report order:
   segformer   the pair+NSF parser (jonathandinu/face-parsing SegFormer, CelebAMask-HQ); original scorer reused
-  erode1 / erode05 / dilate05 / dilate1
-              the SegFormer eyes/mouth mask shrunk / grown by 1% / 0.5% of the crop side before feathering
-              (parser boundary error; dilation lets smoothed skin into B). On a test crop 0.5% keeps .61x / 1.45x of
-              the mask area and 1% .36x / 2.1x (2% left .19x: eyes and brows gone), while BiSeNet and MediaPipe
-              disagree with SegFormer at IoU ~.85, about the 0.5% level
+  erode1 / dilate1
+              the SegFormer eyes/mouth mask shrunk / grown by 1% of the crop side before feathering (a boundary error
+              larger than the real parsers' disagreement; dilation lets smoothed skin into B). On a test crop 1% keeps
+              .36x / 2.1x of the mask area (2% left .19x: eyes and brows gone; 0.5%, .61x / 1.45x, is about the IoU ~.85
+              at which BiSeNet and MediaPipe disagree with SegFormer, so it would repeat those rows)
   bisenet     BiSeNet face parser (facexlib v0.2.0 weights, CelebAMask-HQ; different network)
   mediapipe   MediaPipe Face Landmarker (478-point mesh): filled eye, brow and outer-lip polygons (different
               training data and method; no glasses class; frames without a detected face get an empty mask)
@@ -47,11 +47,11 @@ import nsf_smoothed_b_v2 as sb
 rc, nsf, fusion, occlusion, diagonal, base, evaluation, v2 = sb.rc, sb.nsf, sb.fusion, sb.occlusion, sb.diagonal, sb.base, sb.evaluation, sb.v2
 FILTERS, VIEWS, STRONG = sb.FILTERS, sb.VIEWS, sb.STRONG
 FAMILIES = ['segformer', 'bisenet', 'mediapipe']
-MORPH = {'erode1': -.01, 'erode05': -.005, 'dilate05': .005, 'dilate1': .01}
+MORPH = {'erode1': -.01, 'dilate1': .01}
 VARIANTS = ['segformer', *MORPH, 'bisenet', 'mediapipe']
 FAMILY = {v: 'segformer' if v in MORPH else v for v in VARIANTS}
-NAMES = {'segformer': 'SegFormer (원본, 제안)', 'erode1': 'SegFormer 마스크 축소 1%', 'erode05': 'SegFormer 마스크 축소 0.5%',
-         'dilate05': 'SegFormer 마스크 확대 0.5%', 'dilate1': 'SegFormer 마스크 확대 1%', 'bisenet': 'BiSeNet',
+NAMES = {'segformer': 'SegFormer (원본, 제안)', 'erode1': 'SegFormer 마스크 축소 1%',
+         'dilate1': 'SegFormer 마스크 확대 1%', 'bisenet': 'BiSeNet',
          'mediapipe': 'MediaPipe Face Mesh', 'none': 'pair (B 없음, 참고)'}
 PROTOCOL = 'nsf_parser_ablation_v1'
 SETTINGS = dict(nsf.SETTINGS, variants=VARIANTS, morph=MORPH, strength=STRONG, blur_fraction=v2.PARSER['blur_fraction'])

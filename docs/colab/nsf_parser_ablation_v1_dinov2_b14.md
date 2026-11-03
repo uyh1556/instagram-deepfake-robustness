@@ -1,12 +1,12 @@
 # NSF_Parser_Ablation_dinov2_b14
 
 pair+NSF의 점수 B를 만드는 눈·입 마스크의 parser만 바꿔 비교. 학습 없음, w=.2·pair 예측·FF++ 표본은 pair+NSF 그대로.
-- 비교 순서: SegFormer(원본) → SegFormer 마스크 축소 1% / 0.5% · 확대 0.5% / 1% → BiSeNet → MediaPipe Face Mesh (마지막 줄은 참고용 pair)
+- 비교 순서: SegFormer(원본) → SegFormer 마스크 축소 1% → 확대 1% → BiSeNet → MediaPipe Face Mesh (마지막 줄은 참고용 pair)
 - 점수 B는 탐지기 입력과 같은 이미지에서 계산(보정 이미지면 그 이미지에서 다시 파싱한 마스크)
 - SegFormer는 기존 점수기를 그대로 쓰고, 나머지는 같은 FF++ 표본에서 자기 마스크로 점수기를 새로 학습
 - 사전 판정 기준(결과 전 고정): pair보다 좋은 run ≥ 10/12, 16칸 평균 최저 교차 AUC가 SegFormer와 .01 이내면 "유지"
 - 먼저 `build_nsf_parser_masks_v1`로 마스크 tar 3개가 있어야 함. seed 42/43/44를 한 번에 평가
-- 처음 실행 시간: CDF test 8,288장 × 5개 보기 × 변형 7개 추론, 대략 40~90분. 끊기면 Cell 1부터 다시 실행하면 끝난 보기는 건너뜀
+- 처음 실행 시간: CDF test 8,288장 × 5개 보기 × 변형 5개 추론, 대략 30~60분. 끊기면 Cell 1부터 다시 실행하면 끝난 보기는 건너뜀
 
 ## Cell 1 — 코드 설치
 
