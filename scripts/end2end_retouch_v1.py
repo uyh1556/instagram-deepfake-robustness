@@ -48,6 +48,8 @@ VIEW = 'gfpgan'
 RETOUCHER = dict(name='GFPGAN', version='1.4', arch='clean', channel_multiplier=2, upscale=1, only_center_face=True,
                  paste_back=True, bg_upsampler=None, noise_seed='sha256(crop_path) per frame',
                  weights_url='https://github.com/TencentARC/GFPGAN/releases/download/v1.3.0/GFPGANv1.4.pth')
+BASICSR = dict(url='https://files.pythonhosted.org/packages/86/41/00a6b000f222f0fa4c6d9e1d6dcc9811a374cabb8abb9d408b77de39648c/basicsr-1.4.2.tar.gz',
+               sha256='b89b595a87ef964cda9913b4d99380ddb6554c965577c0c10cb7b78e31301e87')
 METHODS = ['baseline', 'pair', *(f'pair_nsf_{v}' for v in sb.VARIANTS)]
 NAMES = {'baseline': 'Baseline (추가 학습 없음)', 'pair': 'pair (원본·보정 동시 학습)',
          'pair_nsf_saved': 'pair+NSF, B=원본 이미지 (낙관적)', 'pair_nsf_smooth_pix': 'pair+NSF, B=보정 픽셀 + 원본 마스크',
@@ -93,9 +95,34 @@ def frame_seed(relative):
     return int.from_bytes(hashlib.sha256(relative.encode()).digest()[:4], 'little')
 
 
+def vendor_basicsr(folder):
+    """basicsr 1.4.2 ships only as an sdist whose setup.py cannot run on Python 3.13 (it reads __version__ back through
+    locals() after exec, which PEP 667 broke). The pure-Python package (with its generated version.py) is taken from the
+    hash-checked PyPI sdist and put on sys.path instead; its optional CUDA ops are not used by GFPGAN."""
+    import shutil
+    import tarfile
+    import urllib.request
+    folder = Path(folder)
+    if not (folder/'basicsr'/'version.py').is_file():
+        folder.mkdir(parents=True, exist_ok=True)
+        archive = folder/'basicsr-1.4.2.tar.gz'
+        urllib.request.urlretrieve(BASICSR['url'], archive)
+        if builder.digest(archive) != BASICSR['sha256']:
+            raise ValueError('basicsr sdist hash differs from PyPI 1.4.2')
+        prefix = 'basicsr-1.4.2/basicsr/'
+        with tarfile.open(archive) as tar:
+            members = [m for m in tar.getmembers() if m.name.startswith(prefix) and (m.isfile() or m.isdir())]
+            tar.extractall(folder/'sdist', members=members, filter='data')
+        shutil.move(str(folder/'sdist'/prefix), str(folder/'basicsr'))
+        shutil.rmtree(folder/'sdist'); archive.unlink()
+    if str(folder) not in sys.path:
+        sys.path.insert(0, str(folder))
+
+
 def load_retoucher(args):
     """GFPGANer and the sha256 of its weights. basicsr 1.4.2 imports a torchvision module removed in torchvision 0.17;
     its one used function exists in torchvision.transforms.functional, so that module is aliased (no behaviour change)."""
+    vendor_basicsr(args.vendor_dir)
     import torchvision.transforms.functional as functional
     sys.modules.setdefault('torchvision.transforms.functional_tensor', functional)
     from gfpgan import GFPGANer
@@ -119,13 +146,13 @@ def retouch(model, array, relative):
 
 
 def versions():
+    from importlib.metadata import version
     out = {}
     for name in ['gfpgan', 'basicsr', 'facexlib', 'torch', 'torchvision']:
         try:
-            from importlib.metadata import version
             out[name] = version(name)
-        except Exception:
-            out[name] = None
+        except Exception:   # vendored basicsr has no install metadata
+            out[name] = getattr(sys.modules.get(name), '__version__', None)
     return out
 
 
@@ -435,6 +462,7 @@ def parse_args(argv=None):
     p.add_argument('--cache-root', type=Path, default=Path('/content/end2end_retouch_cache'))
     p.add_argument('--v2-cache-root', type=Path, default=Path('/content/beauty_smoothing_v2_cache'))
     p.add_argument('--weights-dir', type=Path, default=Path('/content/gfpgan_weights'))
+    p.add_argument('--vendor-dir', type=Path, default=Path('/content/gfpgan_vendor'), help='basicsr taken from its PyPI sdist')
     p.add_argument('--work-dir', type=Path, default=Path('/content/end2end_retouch_work'))
     p.add_argument('--seeds', nargs='+', type=int, default=[42, 43, 44])
     for key, default in [('batch-size', 64), ('workers', 2), ('parse-batch', 16)]:
