@@ -13,12 +13,14 @@ from PIL import Image
 import end2end_retouch_v1 as er
 
 
-class FakeGfpgan:
+class FakeRetoucher:
     """Brightens the crop by 30; reports no face for crops whose top-left pixel is 0."""
-    def enhance(self, bgr, has_aligned, only_center_face, paste_back):
-        if bgr[0, 0, 0] == 0:
-            return [], [], bgr.copy()
-        return [bgr], [bgr], np.clip(bgr.astype(np.int16)+30, 0, 255).astype(np.uint8)
+    identity = dict(settings=dict(name='fake'))
+
+    def __call__(self, array, relative):
+        if array[0, 0, 0] == 0:
+            return array.copy(), 0
+        return np.clip(array.astype(np.int16)+30, 0, 255).astype(np.uint8), 1
 
 
 class BuildTests(unittest.TestCase):
@@ -34,21 +36,21 @@ class BuildTests(unittest.TestCase):
                 rows.append(dict(crop_path=p, roi_status=status, split='test', video_id=f'v{i}', class_index=str(i % 2)))
             (data/'manifests').mkdir()
             pd.DataFrame(rows).to_csv(data/er.builder.MANIFESTS['cdf_test'], index=False)
-            args = argparse.Namespace(cdf_root=data, archive_dir=root/'drive', cache_root=root/'cache', weights_dir=root/'w', device='cpu')
-            with mock.patch.object(er, 'load_retoucher', return_value=(FakeGfpgan(), 'abc')):
+            args = argparse.Namespace(cdf_root=data, archive_dir=root/'drive', cache_root=root/'cache', view='abpn', device='cpu')
+            with mock.patch.object(er, 'load_retoucher', return_value=FakeRetoucher()):
                 er.build(args)
-            self.assertTrue((root/'drive/cdf_test_gfpgan.tar').is_file())
-            self.assertTrue((root/'drive/preview_gfpgan.jpg').is_file())
-            frames = pd.read_csv(root/'cache/cdf_test/gfpgan/frames.csv')
+            self.assertTrue((root/'drive/cdf_test_abpn.tar').is_file())
+            self.assertTrue((root/'drive/preview_abpn.jpg').is_file())
+            frames = pd.read_csv(root/'cache/cdf_test/abpn/frames.csv')
             self.assertEqual(frames.crop_path.tolist(), ['v0/f.png', 'v1/f.png'])   # fallback frame not cached
             self.assertEqual(frames.faces.tolist(), [1, 0])
-            cache, ident = er.restore(argparse.Namespace(cache_root=root/'fresh', archive_dir=root/'drive'))
-            self.assertEqual(ident['weights_sha256'], 'abc')
+            cache, idents = er.restore(argparse.Namespace(cache_root=root/'fresh', archive_dir=root/'drive'), ['abpn'])
+            self.assertEqual(idents['abpn']['settings'], dict(name='fake'))
             clean = Image.open(data/'v0/f.png').convert('RGB')
-            self.assertTrue((np.asarray(cache.view(clean, 'v0/f.png')) == 40).all())
-            self.assertTrue((np.asarray(cache.view(clean, 'v2/f.png', detected=False)) == 10).all())
-            with self.assertRaises(ValueError):
-                cache.view(clean, 'v0/f.png', name='bilateral')
+            self.assertTrue((np.asarray(cache.view(clean, 'v0/f.png', 'abpn')) == 40).all())
+            self.assertTrue((np.asarray(cache.view(clean, 'v2/f.png', 'abpn', detected=False)) == 10).all())
+            with self.assertRaises(FileNotFoundError):
+                er.restore(argparse.Namespace(cache_root=root/'fresh', archive_dir=root/'drive'), ['gfpgan'])
 
     def test_sample_writes_sheet_without_caching(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -62,9 +64,9 @@ class BuildTests(unittest.TestCase):
                 rows.append(dict(crop_path=p, roi_status='detected', split='test', video_id=f'v{i}', class_index=str(i % 2)))
             (data/'manifests').mkdir()
             pd.DataFrame(rows).to_csv(data/er.builder.MANIFESTS['cdf_test'], index=False)
-            args = er.parse_args(['sample', '--cdf-root', str(data), '--count', '2', '--sample-out', str(root/'s.jpg'),
+            args = er.parse_args(['sample', '--view', 'gfpgan', '--cdf-root', str(data), '--count', '2', '--sample-out', str(root/'s.jpg'),
                                   '--weights-dir', str(root/'w'), '--device', 'cpu'])
-            with mock.patch.object(er, 'load_retoucher', return_value=(FakeGfpgan(), 'abc')):
+            with mock.patch.object(er, 'load_retoucher', return_value=FakeRetoucher()):
                 er.sample(args)
             with Image.open(root/'s.jpg') as sheet:
                 self.assertEqual(sheet.size, (768, 512))
@@ -86,17 +88,19 @@ class RowTests(unittest.TestCase):
         self.assertGreater(r['fn_cross_auc'], r['clean_auc'])
         self.assertEqual(r['worse_cross_auc'], r['fp_cross_auc'])
         self.assertEqual(r['fn_flip'], 0.)
-        preds = {('baseline', 42): (clean, clean-.5)}
+        preds = {('baseline', 42): (clean, {'abpn': clean-.5, 'gfpgan': clean-1.})}
         cals = {}
         for f in er.FILTERS:
-            preds[(f'aug_pair@{f}', 42)] = (clean, clean-.2)
+            preds[(f'aug_pair@{f}', 42)] = (clean, {'abpn': clean-.2, 'gfpgan': clean-.4})
             cals[(42, f)] = dict(rank_val_mean=0., rank_val_std=1.)
         b0 = rng.normal(size=100)+y
-        b = {'normal': {v: b0 for v in er.sb.VARIANTS}, er.VIEW: dict(saved=b0, smooth_pix=b0, smooth_all=b0+.1)}
-        rows = er.rows_for(y, preds, b, [42], 'xception', calibrations=cals)
-        self.assertEqual(rows.groupby('method').size().to_dict(),
+        b = {'normal': {v: b0 for v in er.sb.VARIANTS}, 'abpn': dict(saved=b0, smooth_pix=b0, smooth_all=b0+.1),
+             'gfpgan': dict(saved=b0, smooth_pix=b0, smooth_all=b0+.5)}
+        rows = er.rows_for(y, preds, b, [42], 'xception', ['abpn', 'gfpgan'], calibrations=cals)
+        self.assertEqual(rows[rows.view.eq('abpn')].groupby('method').size().to_dict(),
                          {'baseline': 1, 'pair': 4, 'pair_nsf_saved': 4, 'pair_nsf_smooth_pix': 4, 'pair_nsf_smooth_all': 4})
-        nsf = rows[rows.method.eq('pair_nsf_saved')].iloc[0]
+        self.assertEqual(len(rows), 34)
+        nsf = rows[rows.view.eq('abpn') & rows.method.eq('pair_nsf_saved')].iloc[0]
         a = clean
         expected = er.metrics(y, .8*a+.2*b0, .8*(a-.2)+.2*b0)
         self.assertAlmostEqual(nsf.worse_cross_auc, expected['worse_cross_auc'])
