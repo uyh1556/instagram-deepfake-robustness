@@ -72,6 +72,18 @@ class BuildTests(unittest.TestCase):
                 self.assertEqual(sheet.size, (768, 512))
             self.assertEqual(sorted(p.name for p in root.iterdir()), ['cdf', 's.jpg'])
 
+    def test_check_accepts_the_first_version_identity(self):
+        with tempfile.TemporaryDirectory() as temp:
+            cache = er.Retouched(temp)
+            for view in ['gfpgan', 'abpn']:   # both folders hold the old gfpgan identity
+                folder = cache.root/view
+                folder.mkdir(parents=True)
+                (folder/'complete.json').write_text('{}')
+                (folder/'identity.json').write_text(json.dumps(dict(protocol=er.PROTOCOL, part='gfpgan', weights_sha256='x')))
+            self.assertEqual(cache.check('gfpgan')['part'], 'gfpgan')
+            with self.assertRaises(ValueError):
+                cache.check('abpn')
+
     def test_frame_seed_is_stable(self):
         self.assertEqual(er.frame_seed('a/b.png'), er.frame_seed('a/b.png'))
         self.assertNotEqual(er.frame_seed('a/b.png'), er.frame_seed('a/c.png'))

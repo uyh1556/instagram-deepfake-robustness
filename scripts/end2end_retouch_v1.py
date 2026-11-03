@@ -86,7 +86,8 @@ class Retouched:
         if not (folder/'complete.json').is_file():
             raise FileNotFoundError(f'Retouched cache incomplete: {folder}')
         ident = json.loads((folder/'identity.json').read_text())
-        if ident.get('protocol') != PROTOCOL or ident.get('view') != view:
+        # The gfpgan tar was built by the first (gfpgan-only) version of this script, which named the key 'part'.
+        if ident.get('protocol') != PROTOCOL or ident.get('view', ident.get('part')) != view:
             raise ValueError(f'Not a {PROTOCOL} {view} cache: {folder}')
         return ident
 
