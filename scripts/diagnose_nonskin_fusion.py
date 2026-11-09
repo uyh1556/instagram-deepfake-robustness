@@ -16,6 +16,13 @@ only makes it worth a trained pilot. No Celeb-DF test frame is used.
 instead of the baseline; the non-skin probe stays on the baseline features. w = 0 is then rank alone, so the verdict asks
 whether non-skin evidence still adds on top of smoothing augmentation (rank already removed much of the shift).
 --full-model fc: the same on top of method A (aug_pair_rank_fc<lambda>_ramp<R>, the main-experiment setting).
+--full-model pair: the same on top of aug_pair (original + smoothed CE, no ranking), the source of the proposed pair+NSF.
+--b-on-input: score the face-inner view of every smoothed cdf_dev view on that smoothed image, with its own face-parsing
+mask (the deployed method: B always comes from the image the detector receives). Without it B is scored once on the
+clean image, as in the original w selection on rank.
+--select-w (pre-registered 2026-11-10, before any pair run): the fusion weight is the largest w > 0 in the grid whose
+face_inner clean AUC, rounded to 3 decimals, is not below w = 0 on EVERY backbone of the run, for that w and every smaller
+grid w (the rule that gave w = .2 on rank). Saved as <stem>_wselect_seed<seed>.csv.
 """
 import argparse
 from pathlib import Path
@@ -37,7 +44,7 @@ diagonal, base, evaluation = occlusion.diagonal, occlusion.base, occlusion.evalu
 INNER = ['l_eye', 'r_eye', 'l_brow', 'r_brow', 'eye_g', 'mouth', 'u_lip', 'l_lip']
 WEIGHTS = [0., .1, .2, .3, .4, .5]
 VARIANTS = ['noskin', 'face_inner']
-FULL_LABELS = {'rank': 'aug_pair_rank',
+FULL_LABELS = {'rank': 'aug_pair_rank', 'pair': 'aug_pair',
                'fc': f'aug_pair_rank_fc{diagonal.FC_WEIGHT:g}_ramp{diagonal.FC_RAMP:g}'}   # main-experiment method A
 
 
@@ -63,20 +70,31 @@ class InnerParser(v2.SkinParser):
         return out
 
 
-def parse_inner(args, sets):
-    """Face-inner keep masks of every sampled frame, written once as PNGs under --work-dir."""
-    todo = [(root, p) for f, root, _ in sets.values() for p in f.crop_path if not (args.work_dir/'inner'/p).is_file()]
+def inner_dir(filt=None, strength=0.):
+    """Mask folder: clean frames under inner/, a smoothed view under inner_<filter>_<strength>/."""
+    return 'inner' if filt is None else f'inner_{filt}_{strength:g}'
+
+
+def parse_inner(args, sets, caches=None):
+    """Face-inner keep masks of every sampled frame (and, with --b-on-input, of every smoothed cdf_dev view, parsed on
+    that smoothed image), written once as PNGs under --work-dir."""
+    jobs = [(root, p, None, 0., None) for f, root, _ in sets.values() for p in f.crop_path]
+    if getattr(args, 'b_on_input', False):
+        f, root, d = sets['cdf_dev']
+        jobs += [(root, p, filt, strength, caches[d]) for filt in v2.FILTERS for strength in v2.LEVELS.values() for p in f.crop_path]
+    todo = [j for j in jobs if not (args.work_dir/inner_dir(j[2], j[3])/j[1]).is_file()]
     if not todo:
         return
     parser = InnerParser(args.device)
     for start in range(0, len(todo), args.parse_batch):
         chunk = todo[start:start+args.parse_batch]
         images = []
-        for root, p in chunk:
+        for root, p, filt, strength, cache in chunk:
             with Image.open(root/p) as opened:
-                images.append(opened.convert('RGB'))
-        for (_, p), mask in zip(chunk, parser.masks(images)):
-            out = args.work_dir/'inner'/p
+                image = opened.convert('RGB')
+            images.append(image if filt is None else cache.view(image, p, filt, strength))
+        for (_, p, filt, strength, _), mask in zip(chunk, parser.masks(images)):
+            out = args.work_dir/inner_dir(filt, strength)/p
             out.parent.mkdir(parents=True, exist_ok=True)
             v2.mask_to_image(mask).save(out)
         print(f'  face-inner masks {min(start+args.parse_batch, len(todo))}/{len(todo)}', flush=True)
@@ -84,7 +102,8 @@ def parse_inner(args, sets):
 
 
 class Inputs(Dataset):
-    """full: original or a v2 smoothed view; noskin: skin mask grey; face_inner: only eyes/brows/lips/mouth kept."""
+    """full: original or a v2 smoothed view; noskin: skin mask grey; face_inner: only eyes/brows/lips/mouth kept (on a
+    smoothed view too when filt is given, with the mask parsed on that view)."""
     def __init__(self, frame, root, cache, mode, transform, work_dir, filt=None, strength=0.):
         self.paths, self.root, self.cache, self.mode, self.transform = frame.crop_path.tolist(), root, cache, mode, transform
         self.work_dir, self.filt, self.strength = work_dir, filt, strength
@@ -96,12 +115,12 @@ class Inputs(Dataset):
         path = self.paths[index]
         with Image.open(self.root/path) as opened:
             image = opened.convert('RGB')
-        if self.mode == 'full' and self.filt is not None:
+        if self.mode in ('full', 'face_inner') and self.filt is not None:
             image = self.cache.view(image, path, self.filt, self.strength)
-        elif self.mode == 'noskin':
+        if self.mode == 'noskin':
             image = occlusion.occlude(image, self.cache.mask(path, image.size))
         elif self.mode == 'face_inner':
-            with Image.open(self.work_dir/'inner'/path) as opened:
+            with Image.open(self.work_dir/inner_dir(self.filt, self.strength)/path) as opened:
                 keep = v2.image_to_mask(opened)
             image = occlusion.occlude(image, 1.-keep)
         return self.transform(image), index
@@ -118,10 +137,13 @@ def worse(row):
 
 
 def run(args):
+    for field, default in [('variants', VARIANTS), ('b_on_input', False), ('select_w', False)]:
+        if not hasattr(args, field):
+            setattr(args, field, default)
     sets = occlusion.frames(args)
     caches = {'ffpp_trainval': diagonal.restore_cache(args.cache_root, args.archive_dir, 'ffpp_trainval', ['mask']),
               'cdf_dev': diagonal.restore_cache(args.cache_root, args.archive_dir, 'cdf_dev', v2.SmoothingCache.PARTS)}
-    parse_inner(args, sets)
+    parse_inner(args, sets, caches)
     cdf, cdf_root, _ = sets['cdf_dev']
     y = cdf.class_index.astype(int).to_numpy()
     rows = []
@@ -150,18 +172,23 @@ def run(args):
         if args.full_model != 'baseline':   # non-skin probe always on the baseline features
             del model
             model, transform = load(args, name, initial['model_state_dict'])
-        for variant in VARIANTS:
+        for variant in args.variants:
             train_f = score('ffpp_train', variant)[0]
             probe = make_pipeline(StandardScaler(), LogisticRegression(max_iter=3000, C=1.))
             probe.fit(train_f, sets['ffpp_train'][0].class_index.astype(int))
             val_p = probe.decision_function(score('ffpp_val', variant)[0])
             cdf_p = probe.decision_function(score('cdf_dev', variant)[0])
-            zp = (cdf_p-val_p.mean())/val_p.std()
+            zb = lambda p: (p-val_p.mean())/val_p.std()
+            zp = {'normal': zb(cdf_p)}
+            for filt in v2.FILTERS:
+                for condition, strength in v2.LEVELS.items():
+                    on_input = variant == 'face_inner' and args.b_on_input   # noskin never sees the (skin-only) edit
+                    zp[(filt, condition)] = zb(probe.decision_function(score('cdf_dev', variant, filt, strength)[0])) if on_input else zp['normal']
             for w in WEIGHTS:
                 for filt in v2.FILTERS:
-                    margins = {'normal': (1-w)*zf(full['normal'])+w*zp}
+                    margins = {'normal': (1-w)*zf(full['normal'])+w*zp['normal']}
                     for condition in v2.LEVELS:
-                        margins[condition] = (1-w)*zf(full[(filt, condition)])+w*zp
+                        margins[condition] = (1-w)*zf(full[(filt, condition)])+w*zp[(filt, condition)]
                     m = shift.measure(y, margins)
                     rows.append(dict(model=name, variant=variant, w=w, filter=filt, normal_auc=m['normal_auc'],
                                      fp_cross_auc=m['fp_cross_auc'], fn_cross_auc=m['fn_cross_auc'], worse_cross_auc=worse(m),
@@ -173,9 +200,15 @@ def run(args):
     table = pd.DataFrame(rows).assign(full_model='baseline' if args.full_model == 'baseline' else f'{FULL_LABELS[args.full_model]}@{args.train_filter}')
     args.output_root.mkdir(parents=True, exist_ok=True)
     stem = 'nonskin_fusion' if args.full_model == 'baseline' else f'nonskin_fusion_on_{args.full_model}_{args.train_filter}'
+    stem += '_binput' if args.b_on_input else ''
     table.to_csv(args.output_root/f'{stem}_seed{args.seed}.csv', index=False)
     verdict = decide(table)
     verdict.to_csv(args.output_root/f'{stem}_verdict_seed{args.seed}.csv', index=False)
+    if args.select_w and 'face_inner' in args.variants:
+        chosen, steps = select_w(table)
+        steps.to_csv(args.output_root/f'{stem}_wselect_seed{args.seed}.csv', index=False)
+        print(steps.round(3).to_string(index=False))
+        print(f'Selected w (largest w with no clean-AUC loss on {", ".join(args.models)}): {chosen}', flush=True)
     with pd.option_context('display.width', 220, 'display.max_rows', 300):
         print(table.pivot_table(index=['model', 'variant', 'w'], columns='filter', values='worse_cross_auc', sort=False)[v2.FILTERS]
               .join(table.groupby(['model', 'variant', 'w'], sort=False).normal_auc.first()).round(3).to_string())
@@ -202,6 +235,24 @@ def decide(table):
     return pd.DataFrame(out)
 
 
+def select_w(table):
+    """Pre-registered 2026-11-10: walking up the grid from w = 0, the last w > 0 before the first w whose face_inner clean AUC
+    (rounded to 3 decimals) falls below the w = 0 clean AUC on any backbone; None if the first step already loses.
+    Returns (w, per-w table)."""
+    t = table[table.variant.eq('face_inner')].groupby(['model', 'w'], sort=False).normal_auc.first().unstack('model').sort_index()
+    change = t.sub(t.loc[0.]).round(3)
+    steps = change.add_prefix('clean_change_').reset_index()
+    steps['no_loss_all'] = change.ge(0).all(axis=1).to_numpy()
+    chosen = None
+    for w, ok in zip(steps.w, steps.no_loss_all):
+        if w > 0:
+            if not ok:
+                break
+            chosen = float(w)
+    steps['selected'] = steps.w.eq(chosen)
+    return chosen, steps
+
+
 def parse_args(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     for field in ['source-root', 'cdf-root', 'membership', 'baseline-runs-root', 'archive-dir', 'output-root']:
@@ -212,6 +263,9 @@ def parse_args(argv=None):
     p.add_argument('--runs-parent', type=Path, help='rank: folder holding ffpp_c23_smoothing_v2_diagonal_<model>')
     p.add_argument('--train-filter', choices=v2.FILTERS, default='bilateral', help='rank: training filter of the aug_pair_rank run')
     p.add_argument('--models', nargs='+', choices=list(base.PREPROCESS), default=['xception', 'clip_b16', 'dinov2_b14'])
+    p.add_argument('--variants', nargs='+', choices=VARIANTS, default=VARIANTS)
+    p.add_argument('--b-on-input', action='store_true', help='face_inner B scored on each smoothed cdf_dev view, mask parsed on it')
+    p.add_argument('--select-w', action='store_true', help='apply the pre-registered w selection rule (face_inner)')
     for field, default in [('seed', 42), ('baseline-seed', 42), ('train-images', 2000), ('val-images', 1200), ('cdf-images', 2000),
                            ('batch-size', 64), ('workers', 2), ('parse-batch', 16)]:
         p.add_argument('--'+field, type=int, default=default)

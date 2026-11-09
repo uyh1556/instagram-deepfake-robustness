@@ -979,3 +979,9 @@ Pre-registered verdict: holds everywhere except Xception erode1 (gap -.012) and 
 Masks vs SegFormer (CDF clean, 7,999 detected frames): IoU BiSeNet .81, MediaPipe .70, erode1 .46 (area .46x), dilate1 .60 (area 1.68x); empty masks <= .05% for every parser (MediaPipe found a face in all but 3 frames). Clean-B reproduction of the original scorer: corr 1.000000 (Xception, CLIP), .99996 (DINO; max |diff| .70 on a few frames from SegFormer GPU nondeterminism).
 B alone clean AUC (Xception/CLIP/DINO): SegFormer .674/.631/.626, BiSeNet .670/.623/.643, MediaPipe .677/.634/.641, erode1 .667/.590/.589, dilate1 .673/.653/.643.
 Reading: the pair+NSF gain does not depend on the SegFormer parser: two parsers of different architecture/data/method (IoU .70-.81 with SegFormer) give the same all-16 worse cross AUC within -.004..+.011 and beat pair in 12/12 runs on every backbone. Only shrinking the mask (less eyes/mouth evidence) costs ~.01; growing it so smoothed skin enters B does not hurt.
+
+## pair+NSF 결합 비율 w 재선정 준비 (2026-11-10; 결과 전)
+w = .2는 교차 순위(aug_pair_rank@bilateral seed42) 위에서 cdf_dev로 고른 값이고, 제안 방법은 동시 증강(aug_pair) 위에 얹으므로 같은 규칙으로 aug_pair 위에서 다시 고른다(사용자 요청, 5장 작성 전).
+- 코드: diagnose_nonskin_fusion.py에 --full-model pair(aug_pair), --variants, --b-on-input(face_inner B를 각 보정 cdf_dev 이미지에서 다시 파싱한 마스크로 계산 = 배치 방식), --select-w 추가. 노트북 diagnose_nonskin_fusion_on_pair(세 백본 한 런타임, 기존 evaluations/nonskin_fusion_precheck에 nonskin_fusion_on_pair_bilateral_binput_* 저장).
+- 사전 등록 규칙: w = 0부터 격자 {.1,…,.5}를 올라가며 face_inner 원본 AUC(소수 셋째 자리)가 w = 0보다 낮아지는 백본이 생기는 첫 w 직전 값. 교차 순위 결과 CSV에 적용하면 .2(DINO w=.3에서 -.004)로 기존 선택을 재현.
+- 해석(결과 전 확정): 선정 w = .2면 현재 pair+NSF cdf_test 결과 유지; 다르면 그 w로 pair+NSF cdf_test를 다시 계산해 논문에 사용(.2 결과는 참고); 통과 w가 없으면 기록 후 사용자 결정. cdf_test는 w 선정에 쓰지 않음.

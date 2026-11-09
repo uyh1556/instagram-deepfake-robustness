@@ -92,6 +92,35 @@ class NonskinFusionTests(unittest.TestCase):
             fc = fusion.run(on_fc)
         self.assertEqual(set(fc.full_model), {'aug_pair_rank_fc100_ramp2@bilateral'})
         self.assertTrue((self.root/'fus/nonskin_fusion_on_fc_bilateral_verdict_seed42.csv').is_file())
+        # On top of aug_pair with B scored on each smoothed view (masks parsed on that view) and the w rule.
+        with patch.object(v2, 'full', side_effect=v2_fixture.fake_full):
+            diagonal.train(argparse.Namespace(source_root=a.source_root, baseline_runs_root=a.baseline_runs_root, runs_root=runs,
+                manifest_root=self.root/'diag_manifests', archive_dir=self.root/'drive', source_validation=None, cache_root=self.root/'cache_train',
+                train_filter='bilateral', models=['dinov2_b14'], strategies=['aug_pair'], seed=42, baseline_seed=42, epochs=1, patience=3,
+                source_images=16, val_images=16, batch_size=4, workers=0, encoder_lr=1e-3, head_lr=1e-3, weight_decay=1e-4, ranking_weight=.25,
+                fc_weights=[diagonal.FC_WEIGHT], fc_ramp_epochs=diagonal.FC_RAMP, adv_weights=[1.], adv_ramp_epochs=2., adv_lr=1e-3, proj_ks=[4], replace_runs=[], device='cpu'))
+        on_pair = argparse.Namespace(**{**vars(on_rank), 'full_model': 'pair', 'variants': ['face_inner'], 'b_on_input': True, 'select_w': True})
+        with patch.object(fusion, 'InnerParser', FakeInner):
+            paired = fusion.run(on_pair)
+        self.assertEqual(set(paired.full_model), {'aug_pair@bilateral'})
+        self.assertEqual(set(paired.variant), {'face_inner'})
+        self.assertTrue((self.root/'work/inner_bilateral_0.75/dev_0_1.png').is_file())
+        self.assertTrue((self.root/'fus/nonskin_fusion_on_pair_bilateral_binput_wselect_seed42.csv').is_file())
+
+    def test_select_w_largest_without_clean_loss_on_every_backbone(self):
+        rows = []
+        clean = {'a': [.80, .801, .802, .800, .799, .805], 'b': [.70, .71, .705, .703, .70, .71]}
+        for m, values in clean.items():
+            for w, c in zip(fusion.WEIGHTS, values):
+                for f in v2.FILTERS:
+                    rows.append(dict(model=m, variant='face_inner', w=w, filter=f, normal_auc=c, worse_cross_auc=.6))
+                    rows.append(dict(model=m, variant='noskin', w=w, filter=f, normal_auc=.99, worse_cross_auc=.6))
+        chosen, steps = fusion.select_w(pd.DataFrame(rows))
+        self.assertEqual(chosen, .3)          # w=.4: model a .799 < .800 stops the walk although w=.5 has no loss; noskin ignored
+        self.assertEqual(steps.no_loss_all.tolist(), [True, True, True, True, False, True])
+        none, _ = fusion.select_w(pd.DataFrame([r for r in rows if r['model'] == 'a' or r['w'] == 0]
+                                               + [dict(r, normal_auc=.6) for r in rows if r['model'] == 'b' and r['w'] > 0]))
+        self.assertIsNone(none)
 
 
 if __name__ == '__main__':
