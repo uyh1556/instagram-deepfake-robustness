@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'scripts'))
 import beauty_smoothing_v2 as v2
 import build_beauty_smoothing_v2_cache as builder
 import diagnose_nonskin_fusion as fusion
+import select_nsf_weight_ffpp_val as ffpp_w
 import ffpp_c23_smoothing_v2_diagonal as diagonal
 import test_beauty_smoothing_v2 as v2_fixture
 import test_smoothing_rank_sda_pool_v2 as fixture
@@ -106,6 +107,17 @@ class NonskinFusionTests(unittest.TestCase):
         self.assertEqual(set(paired.variant), {'face_inner'})
         self.assertTrue((self.root/'work/inner_bilateral_0.75/dev_0_1.png').is_file())
         self.assertTrue((self.root/'fus/nonskin_fusion_on_pair_bilateral_binput_wselect_seed42.csv').is_file())
+        # Source-domain check: same rule on FF++ val frames only (no Celeb-DF), on the same aug_pair run.
+        on_ffpp = argparse.Namespace(source_root=a.source_root, baseline_runs_root=a.baseline_runs_root, runs_parent=self.root/'runs_parent',
+                                     output_root=self.root/'fus', work_dir=self.root/'work', train_filter='bilateral', models=['dinov2_b14'],
+                                     seed=42, baseline_seed=42, train_images=16, val_images=16, select_images=0, batch_size=4, workers=0,
+                                     parse_batch=5, device='cpu')
+        with patch.object(fusion, 'InnerParser', FakeInner):
+            ff_table, chosen = ffpp_w.run(on_ffpp)
+        self.assertEqual(len(ff_table), len(fusion.WEIGHTS))
+        self.assertTrue((self.root/'fus/nonskin_fusion_on_pair_bilateral_ffppval_wselect_seed42.csv').is_file())
+        self.assertTrue(any(c.startswith('auc_') for c in ff_table))
+        self.assertTrue(chosen is None or chosen in fusion.WEIGHTS)
 
     def test_select_w_largest_without_clean_loss_on_every_backbone(self):
         rows = []
