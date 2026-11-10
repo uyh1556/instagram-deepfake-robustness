@@ -996,3 +996,9 @@ diagnose_nonskin_fusion_on_pair 실행(cdf_dev 2,000장, aug_pair@bilateral seed
 w = .2는 cdf_dev(Celeb-DF 비테스트 라벨)로 골랐으므로, 평가 도메인 라벨 없이 같은 값이 나오는지 확인(사용자 요청, 학술지 투고 대비).
 - 코드: scripts/select_nsf_weight_ffpp_val.py(+ tests/test_nonskin_fusion.py), 노트북 select_nsf_weight_ffpp_val. A = aug_pair@bilateral seed42, B = face_inner probe(Baseline 특징, FF++ train 2,000장), z = FF++ val 1,200장 — cdf_dev 선정과 동일. 선정 집합만 얼굴 검출된 FF++ val 전체 원본으로 바꿈(Celeb-DF 미사용, 보정 이미지 불필요). 결과 evaluations/nonskin_fusion_precheck/nonskin_fusion_on_pair_bilateral_ffppval_{seed42,wselect_seed42}.csv.
 - 사전 등록: 규칙은 cdf_dev와 같음(diagnose_nonskin_fusion.select_w). 학위논문은 w = .2 유지, 이 결과는 학습 도메인 확인으로 보고; 다르면 둘 다 보고하고 테스트 추가 평가는 별도 결정. FF++ val 원본 AUC가 천장 근처라 작은 변화로도 손실 판정이 날 수 있음(그대로 기록).
+
+## pair+NSF w의 FF++ 검증셋 기준 확인 결과: 통과하는 w 없음 (2026-11-10)
+select_nsf_weight_ffpp_val.py 실행(얼굴 검출 FF++ val 원본 11,028장, aug_pair@bilateral seed42, face_inner). Drive evaluations/nonskin_fusion_precheck/nonskin_fusion_on_pair_bilateral_ffppval_{seed42,wselect_seed42}.csv.
+- 원본 AUC(w=0): Xception .993, CLIP .940, DINO .963. 눈·입 점수 단독: .777 / .671 / .675.
+- w=0 대비 원본 AUC 변화(w=.1/.2/.3/.4/.5): Xception -.000/-.002/-.004/-.009/-.017, CLIP -.001/-.007/-.015/-.026/-.044, DINO +.001/-.002/-.009/-.021/-.044 → CLIP이 w=.1에서 -.001이라 사전 등록 규칙상 선택되는 w 없음(사전에 예상한 천장 효과).
+- 사전 해석대로 학위논문은 w = .2(cdf_dev) 유지, 이 결과는 학습 도메인 확인으로 보고: 같은 도메인에서는 전체 얼굴 모델이 거의 천장이라 약한 눈·입 점수를 섞으면 원본 AUC가 소폭 하락(w=.2에서 -.002~-.007). 눈·입 결합의 이득은 도메인 변화(Celeb-DF)와 보정 조건에서 나타남. 테스트 추가 평가는 하지 않음.
