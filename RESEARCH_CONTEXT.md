@@ -985,3 +985,9 @@ w = .2는 교차 순위(aug_pair_rank@bilateral seed42) 위에서 cdf_dev로 고
 - 코드: diagnose_nonskin_fusion.py에 --full-model pair(aug_pair), --variants, --b-on-input(face_inner B를 각 보정 cdf_dev 이미지에서 다시 파싱한 마스크로 계산 = 배치 방식), --select-w 추가. 노트북 diagnose_nonskin_fusion_on_pair(세 백본 한 런타임, 기존 evaluations/nonskin_fusion_precheck에 nonskin_fusion_on_pair_bilateral_binput_* 저장).
 - 사전 등록 규칙: w = 0부터 격자 {.1,…,.5}를 올라가며 face_inner 원본 AUC(소수 셋째 자리)가 w = 0보다 낮아지는 백본이 생기는 첫 w 직전 값. 교차 순위 결과 CSV에 적용하면 .2(DINO w=.3에서 -.004)로 기존 선택을 재현.
 - 해석(결과 전 확정): 선정 w = .2면 현재 pair+NSF cdf_test 결과 유지; 다르면 그 w로 pair+NSF cdf_test를 다시 계산해 논문에 사용(.2 결과는 참고); 통과 w가 없으면 기록 후 사용자 결정. cdf_test는 w 선정에 쓰지 않음.
+
+## pair+NSF 결합 비율 w 재선정 결과: w = .2 유지 (2026-11-10)
+diagnose_nonskin_fusion_on_pair 실행(cdf_dev 2,000장, aug_pair@bilateral seed42, face_inner, B는 각 입력 이미지에서 재파싱 = --b-on-input). Drive evaluations/nonskin_fusion_precheck/nonskin_fusion_on_pair_bilateral_binput_{seed42,wselect_seed42,verdict_seed42}.csv.
+- 원본 AUC 변화(w=.1/.2/.3/.4/.5, w=0 대비): Xception +.004/+.008/+.009/+.008/+.005, CLIP +.008/+.011/+.011/+.008/+.001, DINO +.005/+.004/-.004/-.019/-.043 → 사전 등록 규칙으로 w = .2 선정(DINO가 w=.3에서 처음 손실). 교차 순위 위 선정과 같은 값.
+- w=0 → .2 (동시 증강 단독 → 결합), 원본 AUC | 최저 교차 AUC bil·WMF·FGS·DT: Xception .765→.773 | .767→.773 · .606→.629 · .657→.672 · .404→.445; CLIP .778→.789 | .706→.721 · .673→.687 · .602→.625 · .745→.756; DINO .842→.846 | .831→.832 · .830→.833 · .672→.695 · .698→.705 (12칸 모두 개선).
+- 사전 해석대로 현재 pair+NSF cdf_test 결과(w=.2) 그대로 사용. 이제 w는 제안 방법 자신의 전체 얼굴 모델(동시 증강)에서, 배치 방식의 B로 확인된 값. 한계: cdf_dev(Celeb-DF 비테스트, 인물 겹침 미확인)·seed 하나·bilateral 학습 run 하나; FF++ val 기준 확인은 하지 않음.
