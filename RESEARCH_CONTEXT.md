@@ -1008,3 +1008,9 @@ select_nsf_weight_ffpp_val.py 실행(얼굴 검출 FF++ val 원본 11,028장, au
 - 학습: ffpp_c23_smoothing_v2_diagonal.py 그대로, --strategies aug_pair_rank --ranking-weight α ∈ {1, 2, 4}, seed 42, 세 백본 × 필터 4 = α당 12 run. α마다 runs/ffpp_c23_rank_weight_v2_<model>/alpha<α>(논문 run 미변경), epoch 표본 manifests/ffpp_c23_rank_weight_v2_<model> 공유.
 - 평가: scripts/rank_weight_check_v2.py(+ tests/test_rank_weight_check_v2.py), 노트북 rank_weight_check_v2_<model>. CDF test 원본 + 4필터 강 보정, 최저 교차 AUC(학습한 4/처음 보는 12/전체 16)와 원본 AUC. 모든 방법에 눈·입 결합(w = .2, 기존 점수기, B는 같은 입력 이미지 = nsf_smoothed_b_v2 smooth_all 점수, z는 run별 FF++ val 1,200장). 기준(seed 42): 동시 증강, 교차 순위 α=.25, 제안 방법(pair+NSF) — 저장된 논문 숫자와 정확히 재현되는지, 새 run이 가중치 외 설정·epoch 표본·배치가 논문 run과 같은지 자동 확인.
 - 사전 해석(결과 전 확정): α = 1·2·4 모두 보고(CDF로 고르지 않음). 큰 α도 동시 증강보다 일관되게 낫지 않으면 "α .25~4에서 순위 손실의 일관된 이점 없음"으로 답변 보강. 큰 α가 동시 증강보다 나으면 논문의 순위 손실 서술을 "α = .25 설정에서"로 한정하고, 그 α 모델 + 눈·입 결합으로 결합의 이득이 유지되는지 함께 보고. 제안 방법(동시 증강 + 눈·입)의 결론은 이 실험과 독립. 특징 일관성은 결과를 본 뒤 재학습 여부 결정(재학습 시 α는 FF++ val로만 선택, λ = 100 고정).
+
+## 교차 순위 가중치: cdf_dev 선정 단계 추가 (2026-11-17; 결과 전, 학습만 진행 중)
+사용자 결정: 처음에 빠졌던 α 탐색을 바로잡는 것이므로, 논문의 λ·w와 같은 방식으로 Celeb-DF 비테스트(cdf_dev)에서 α를 고르고, 공식 test는 그 뒤에만 본다. 위 항목의 "CDF로 고르지 않고 민감도로만 보고"를 이 규칙으로 대체.
+- rank_weight_check_v2.py dev/select 추가: α ∈ {.25, 1, 2, 4}의 aug_pair_rank seed42 run을 cdf_dev(pool v2 라벨 비테스트, 공식 test 영상 겹치면 중단)에서 4×4(학습 필터 4 × 평가 필터 4, 강 보정) 평가.
+- 사전 등록 규칙: score(α) = 세 백본의 16칸 평균 최저 교차 AUC의 평균. 최고 α가 .25보다 .005 이상 높을 때만 교체, 아니면 .25 유지. 세 백본 공통 α 하나. alpha_selection.json에 고정(dev 표 해시 포함); test 평가(collect)는 이 파일 없이는 실행되지 않고 dev 표가 바뀌면 멈춤.
+- 사전 해석: 선정 α = .25면 논문 본 실험 유지 + test 민감도 표 추가. 다른 α면 그 α로 교차 순위 seed 43·44(24 run)와 특징 일관성(36 run, λ = 100 고정)을 다시 학습해 4장 표를 교체하고, 제안 방법(동시 증강 + 눈·입)은 α와 무관하므로 그대로. 노트북 학습 셀·폴더는 이전 커밋과 동일(진행 중 run 이어서 학습).

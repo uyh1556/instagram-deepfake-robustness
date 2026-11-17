@@ -121,6 +121,54 @@ class AnalyzeTests(unittest.TestCase):
                 rw.analyze(fx.args)
 
 
+class SelectionTests(unittest.TestCase):
+    def tables(self, root, all16):
+        """all16: {model: {alpha: score}} -> dev_headline.csv in each backbone's own output folder."""
+        for m, scores in all16.items():
+            d = root/f'exp_{m}'/'dev'; d.mkdir(parents=True, exist_ok=True)
+            pd.DataFrame([dict(model=m, alpha=a, all16=s) for a, s in scores.items()]).to_csv(d/'dev_headline.csv', index=False)
+        return argparse.Namespace(model='clip_b16', alphas=[1., 2., 4.], output_root=root/'exp_clip_b16')
+
+    def test_waits_until_all_three_backbones_have_dev_results(self):
+        with tempfile.TemporaryDirectory() as temp:
+            args = self.tables(Path(temp), {'clip_b16': {.25: .6, 1.: .7, 2.: .7, 4.: .7}})
+            self.assertIsNone(rw.select(args))
+            with self.assertRaises(FileNotFoundError):
+                rw.require_decision(args)
+
+    def test_keeps_thesis_alpha_unless_clearly_better(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = {.25: .600, 1.: .603, 2.: .604, 4.: .598}           # best +.004 < .005 -> keep .25
+            args = self.tables(Path(temp), {m: base for m in rw.BACKBONES})
+            self.assertEqual(rw.select(args)['chosen_alpha'], .25)
+            self.assertEqual(rw.require_decision(args)['best_alpha'], 2.)
+        with tempfile.TemporaryDirectory() as temp:
+            args = self.tables(Path(temp), {'xception': {.25: .50, 1.: .52, 2.: .51, 4.: .50},
+                                            'clip_b16': {.25: .70, 1.: .70, 2.: .71, 4.: .69},
+                                            'dinov2_b14': {.25: .60, 1.: .60, 2.: .61, 4.: .60}})
+            decision = rw.select(args)                                  # mean: .25 .600, 1 .6067, 2 .61 -> 2 (+.01)
+            self.assertEqual(decision['chosen_alpha'], 2.)
+            self.assertAlmostEqual(decision['scores']['2'], .61)
+
+    def test_decision_is_frozen_against_changed_dev_tables(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            args = self.tables(root, {m: {.25: .6, 1.: .62, 2.: .6, 4.: .6} for m in rw.BACKBONES})
+            rw.select(args)
+            self.tables(root, {'xception': {.25: .6, 1.: .5, 2.: .6, 4.: .6}})
+            with self.assertRaises(ValueError):
+                rw.require_decision(args)                                # test refused: dev changed after the choice
+            with self.assertRaises(ValueError):
+                rw.select(args)                                          # and the earlier decision is not overwritten
+
+    def test_alpha_sets_must_match(self):
+        with tempfile.TemporaryDirectory() as temp:
+            tabs = {m: {.25: .6, 1.: .6, 2.: .6, 4.: .6} for m in rw.BACKBONES}
+            tabs['xception'] = {.25: .6, 1.: .6}
+            with self.assertRaises(ValueError):
+                rw.select(self.tables(Path(temp), tabs))
+
+
 class RunGuardTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

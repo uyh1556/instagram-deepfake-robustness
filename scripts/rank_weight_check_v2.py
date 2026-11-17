@@ -8,6 +8,13 @@ Each alpha has its own runs root (runs/ffpp_c23_rank_weight_v2_<model>/alpha<a>)
 The epoch-sample manifests are shared across alphas, and this script checks that every new run saw exactly the
 samples/batches of the thesis alpha=.25 run of the same filter and that its config differs only in the weight.
 
+dev (alpha selection on Celeb-DF NON-test data, like lambda and w in the thesis; rule fixed before any result):
+  * cdf_dev = CDF pool-v2 labelled non-test frames (refuses any official-test video). For alpha in {.25, *alphas},
+    the rank run of every training filter is scored on the original and the four filters at strong strength.
+  * select: once the dev tables of all three backbones exist, score(alpha) = mean over backbones of the all-16 worst
+    cross AUC; the best alpha replaces .25 only if it beats .25 by at least SELECTION_MARGIN (.005), else .25 stays.
+    One alpha for all backbones (as lambda and w). Written to alpha_selection.json; the test evaluation refuses to
+    run before it exists, so the official test cannot influence the choice.
 collect (inference only; Celeb-DF v2 official test, never used for training or selection):
   * new runs: raw margins on the original and the four filters at strong strength (.75, the thesis main metric),
     saved like evaluate_beauty_smoothing_v2.py (same file names), and the FF++ val mean/std of each run (the 1,200
@@ -20,8 +27,8 @@ analyze (no inference; seed 42 only for every row):
   * reproduction checks: aug_pair / alpha=.25 cross AUCs must equal the saved diagonal summary and pair+NSF must equal
     the saved smoothed-B result (same predictions and statistics), otherwise it stops.
 Report per method: original AUC, worst cross AUC (seen 4 / unseen 12 / all 16), cells above 동시 증강 and above the
-proposed method, selected epochs, mean training CE / rank loss and alpha x rank / CE. All alphas are reported; nothing
-is chosen on Celeb-DF.
+proposed method, selected epochs, mean training CE / rank loss and alpha x rank / CE, and which alpha cdf_dev chose.
+All alphas are reported on the test; nothing is chosen on the official test.
 """
 import argparse
 import json
@@ -46,6 +53,10 @@ PROTOCOL = 'rank_weight_check_v2_v1'
 RANK, PAIR = 'aug_pair_rank', 'aug_pair'
 IGNORED = ('ranking_weight', 'code_sha256', 'versions', 'torch')   # may differ between the thesis run and a new alpha
 NAMES = {PAIR: '동시 증강'}
+BACKBONES = ['xception', 'clip_b16', 'dinov2_b14']
+SELECTION_MARGIN = .005
+SELECTION_RULE = ('score(alpha) = mean over the three backbones of the cdf_dev all-16 worst cross AUC (strong) of the '
+                  'aug_pair_rank runs (seed 42); choose the best alpha only if score(best) - score(.25) >= .005, else keep .25')
 
 
 def tag(alpha):
@@ -159,7 +170,137 @@ def calibration_identity(args, alpha, filt, digest, completed, info):
                 settings=nsf.SETTINGS, scorer_pickle_sha256=info['pickle_sha256'], val_paths_sha256=info['val_paths_sha256'])
 
 
+def load_model(args, alpha, filt, digest, initial_hash, run):
+    weights, verified, _ = diagonal.completed_checkpoint(runs_root(args, alpha), args.model, filt, RANK, SEED, initial_hash)
+    if verified != digest:
+        raise ValueError(f'best.pt changed while reading: {run}')
+    model, transform = nsf.load(args, args.model, weights)
+    return weights, dict(model=model, transform=transform)
+
+
+def read_ready(path, digest, order):
+    """Margins of a saved prediction file if it belongs to this checkpoint and frame order, else None (never raises)."""
+    if not path.is_file():
+        return None
+    saved = pd.read_csv(path, dtype={'crop_path': str})
+    if saved.crop_path.tolist() != order or not saved.checkpoint_sha256.eq(digest).all():
+        return None
+    return saved.raw_margin.to_numpy()
+
+
+def dev_dir(output_root):
+    return Path(output_root)/'dev'
+
+
+def dev(args):
+    """Rank runs of every alpha (incl. the thesis .25) on cdf_dev, original + four filters at strong strength."""
+    _, initial_hash = evaluation.checkpoint(argparse.Namespace(runs_root=args.baseline_runs_root, seed=SEED), args.model)
+    ea = argparse.Namespace(dataset='cdf_dev', membership=args.membership, data_root=args.cdf_root, protocol=args.protocol,
+                            output_root=args.output_root, workers=args.workers)
+    frame, provenance = ebs.test_inputs(ea)
+    order, y = frame.crop_path.tolist(), frame.class_index.astype(int).to_numpy()
+    predict_args = argparse.Namespace(output_root=None, data_root=args.cdf_root, eval_batch_size=args.batch_size,
+                                      workers=args.workers, device=args.device, batch_size=args.batch_size)
+    cache, rows = None, []
+    for alpha in [REFERENCE_ALPHA, *args.alphas]:
+        own = args.output_root/tag(alpha)/'cdf_dev'
+        for i, filt in enumerate(FILTERS, 1):
+            run = check_run(args, alpha, filt, initial_hash)
+            digest = base.common.digest(run/'best.pt')
+            margins, todo = {}, []
+            for view in VIEWS:
+                name = f'{args.model}_{RANK}@{filt}_{stem(view)}.csv'
+                found = read_ready(own/name, digest, order)
+                if found is None and alpha == REFERENCE_ALPHA:      # thesis development predictions, if present
+                    found = read_ready(args.original_eval/f'seed{SEED}'/'cdf_dev'/name, digest, order)
+                if found is None:
+                    todo.append(view)
+                else:
+                    margins[view] = found
+            print(f'[dev {tag(alpha)} {i}/4 {filt}] predictions to infer: {len(todo)}', flush=True)
+            if todo:
+                weights, state = load_model(args, alpha, filt, digest, initial_hash, run)
+                if cache is None:
+                    cache = diagonal.restore_cache(args.cache_root, args.archive_dir, 'cdf_dev', v2.SmoothingCache.PARTS)
+                predict_args.output_root = own
+                own.mkdir(parents=True, exist_ok=True)
+                for view in todo:
+                    margins[view] = ebs.predict(predict_args, frame, args.model, f'{RANK}@{filt}', weights, digest, cache,
+                                                None if view == 'normal' else view, 'normal' if view == 'normal' else 'smooth_strong',
+                                                0 if view == 'normal' else STRONG, state)
+                state.clear()
+                del weights
+                if args.device == 'cuda':
+                    torch.cuda.empty_cache()
+            for ev in FILTERS:
+                rows.append(dict(model=args.model, seed=SEED, alpha=alpha, train_filter=filt, filter=ev, held_out=ev != filt,
+                                 checkpoint_sha256=digest, **rc.metrics(y, margins['normal'], margins[ev])))
+    t = pd.DataFrame(rows)
+    head = pd.DataFrame([dict(model=args.model, alpha=a, frames=len(frame), clean_auc=g.groupby('train_filter').clean_auc.first().mean(),
+                              seen4=g[~g.held_out].worse_cross_auc.mean(), unseen12=g[g.held_out].worse_cross_auc.mean(),
+                              all16=g.worse_cross_auc.mean()) for a, g in t.groupby('alpha', sort=True)])
+    dev_dir(args.output_root).mkdir(parents=True, exist_ok=True)
+    t.to_csv(dev_dir(args.output_root)/'dev_rows.csv', index=False)
+    head.to_csv(dev_dir(args.output_root)/'dev_headline.csv', index=False)
+    write_json(dev_dir(args.output_root)/'dev_protocol.json', dict(protocol=PROTOCOL, model=args.model, dataset='cdf_dev',
+        manifest_sha256=provenance['manifest_sha256'], frames=len(frame), alphas=[REFERENCE_ALPHA, *args.alphas], strength=STRONG,
+        official_test_used=False))
+    print(f'{args.model} | cdf_dev ({len(frame)} frames) | worst cross AUC at strong smoothing', flush=True)
+    print(head.round(4).to_string(index=False), flush=True)
+    return select(args)
+
+
+def experiment_prefix(args):
+    name = Path(args.output_root).name
+    if not name.endswith('_'+args.model):
+        raise ValueError(f'Output folder must end with the backbone name: {name}')
+    return name.removesuffix('_'+args.model)
+
+
+def select(args):
+    """One alpha for all backbones from the three cdf_dev tables (pre-registered rule); None while one is missing."""
+    paths = {m: Path(args.output_root).parent/f'{experiment_prefix(args)}_{m}'/'dev'/'dev_headline.csv' for m in BACKBONES}
+    missing = [m for m, p in paths.items() if not p.is_file()]
+    if missing:
+        print(f'Waiting for the cdf_dev results of {missing}; rerun this cell after those notebooks finish their dev step', flush=True)
+        return None
+    t = pd.concat([pd.read_csv(p) for p in paths.values()], ignore_index=True)
+    expected = sorted([REFERENCE_ALPHA, *args.alphas])
+    for m, g in t.groupby('model'):
+        if sorted(g.alpha.tolist()) != expected:
+            raise ValueError(f'{m} dev table has alphas {sorted(g.alpha)}, expected {expected}')
+    score = t.groupby('alpha').all16.mean().sort_index()
+    best = float(score.idxmax())
+    chosen = best if score[best]-score[REFERENCE_ALPHA] >= SELECTION_MARGIN-1e-12 else REFERENCE_ALPHA
+    decision = dict(protocol=PROTOCOL, rule=SELECTION_RULE, margin=SELECTION_MARGIN, chosen_alpha=chosen, best_alpha=best,
+                    scores={f'{a:g}': float(s) for a, s in score.items()},
+                    per_backbone={m: {f'{a:g}': float(v) for a, v in g.set_index('alpha').all16.items()} for m, g in t.groupby('model')},
+                    inputs_sha256={m: base.common.digest(p) for m, p in paths.items()}, official_test_used=False)
+    dest = Path(args.output_root)/'alpha_selection.json'
+    if dest.is_file() and read_json(dest) != decision:
+        raise ValueError(f'An earlier alpha decision differs from this one; dev inputs changed: {dest}')
+    write_json(dest, decision)
+    print('cdf_dev mean all-16 worst cross AUC by alpha:', {k: round(v, 4) for k, v in decision['scores'].items()}, flush=True)
+    print(f'Selected alpha = {chosen:g}' + (' (thesis value kept)' if chosen == REFERENCE_ALPHA else ' (replaces .25 in the thesis)'), flush=True)
+    return decision
+
+
+def require_decision(args):
+    """The test may be evaluated only after cdf_dev chose alpha, and only with the dev tables behind that choice."""
+    dest = Path(args.output_root)/'alpha_selection.json'
+    if not dest.is_file():
+        raise FileNotFoundError('Run the cdf_dev step of all three backbones first (alpha_selection.json missing)')
+    decision = read_json(dest)
+    for m, digest in decision['inputs_sha256'].items():
+        path = Path(args.output_root).parent/f'{experiment_prefix(args)}_{m}'/'dev'/'dev_headline.csv'
+        if not path.is_file() or base.common.digest(path) != digest:
+            raise ValueError(f'cdf_dev table of {m} changed after the alpha decision; rerun the dev step')
+    return decision
+
+
 def collect(args):
+    decision = require_decision(args)
+    print(f'alpha chosen on cdf_dev: {decision["chosen_alpha"]:g}', flush=True)
     info = read_json(args.original_runs/'nonskin_probe'/f'{args.model}_face_inner_seed42.json')
     if info['settings'] != nsf.SETTINGS:
         raise ValueError('Original NSF scorer settings differ')
@@ -327,6 +468,11 @@ def analyze(args):
         train += tr
     reproduce(args, rows)
     head = headline(rows, train)
+    selection = Path(args.output_root)/'alpha_selection.json'
+    chosen = read_json(selection)['chosen_alpha'] if selection.is_file() else None
+    head['dev_selected'] = head.alpha.eq(chosen) if chosen is not None else False
+    if chosen is not None:
+        print(f'cdf_dev-selected alpha: {chosen:g} (rows marked dev_selected)', flush=True)
     args.output_root.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(rows).to_csv(args.output_root/'rank_weight_rows.csv', index=False)
     pd.DataFrame(train).to_csv(args.output_root/'rank_weight_training.csv', index=False)
@@ -341,7 +487,8 @@ def analyze(args):
 
 def parse_args(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument('action', choices=['collect', 'analyze'])
+    p.add_argument('action', choices=['dev', 'select', 'collect', 'analyze'])
+    p.add_argument('--membership', type=Path, help='dev: CDF pool v2 membership_labelled.csv (labelled non-test frames)')
     p.add_argument('--model', required=True, choices=['xception', 'clip_b16', 'dinov2_b14'])
     p.add_argument('--alphas', nargs='+', type=float, default=[1., 2., 4.])
     for key in ['runs-base', 'original-runs', 'original-eval', 'pair-nsf-root', 'smoothed-b-root', 'output-root']:
@@ -362,11 +509,13 @@ def parse_args(argv=None):
     for root in [a.original_runs, a.original_eval, a.pair_nsf_root, a.smoothed_b_root]:
         if a.output_root.resolve() == root.resolve() or a.runs_base.resolve() == root.resolve():
             p.error('Use new folders; thesis runs/evaluations must remain unchanged')
-    if a.action == 'collect' and (a.archive_dir is None or a.baseline_runs_root is None):
-        p.error('collect needs --archive-dir and --baseline-runs-root')
+    if a.action in ('dev', 'collect') and (a.archive_dir is None or a.baseline_runs_root is None):
+        p.error(f'{a.action} needs --archive-dir and --baseline-runs-root')
+    if a.action == 'dev' and a.membership is None:
+        p.error('dev needs --membership')
     return a
 
 
 if __name__ == '__main__':
     args = parse_args()
-    {'collect': collect, 'analyze': analyze}[args.action](args)
+    {'dev': dev, 'select': select, 'collect': collect, 'analyze': analyze}[args.action](args)
