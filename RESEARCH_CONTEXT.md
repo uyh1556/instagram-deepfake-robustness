@@ -1022,3 +1022,11 @@ Xception .490 -> .521, +.031 ± .002 (.028..035), 12/12; CLIP .685 -> .698, +.01
 p_t 2e-14 / 1e-7 / 1e-12; Wilcoxon = sign = .00049 each (minimum possible for n=12); Holm: Wilcoxon/sign .0015, t <= 1.3e-7.
 Held-out and clean AUC also 12/12 on every backbone. Learned filter: 12/12 except CLIP 11/12 (one run -.0007; p_t .0006, Wilcoxon .0015). Secondary metrics are not multiplicity-corrected.
 Reading: the paired difference SD (.002-.004) is far below the seed SD of either method (.01-.017), so the NSF gain is not seed noise even for CLIP (+.013 ~ 1 seed SD). Thesis: report diff ± SD, 12/12 and p (paired t, Wilcoxon, Holm). The four training methods among themselves are still untested (planned: Friedman over the 12 filter x seed blocks).
+
+## Friedman test of the four training methods (committee request, 2026-11-23)
+scripts/friedman_test_training_methods_v2.py (7fe8d00), notebook paired_test_pair_nsf_v2 cell 3; blocks = 12 (train filter x seed) per backbone, per-run value as in the paired test, headline reproduced. Output: Drive evaluations/ffpp_c23_training_methods_friedman_v2/ (friedman.csv, pairwise.csv).
+all16 worse cross AUC: Friedman chi2 / p / Kendall W; mean rank (1 = best) single / pair / rank / fc:
+Xception 12.1 / .007 / .34; 2.92 / 1.75 / 2.00 / 3.33 | CLIP 5.3 / .151 / .15; 2.92 / 1.83 / 2.42 / 2.83 | DINO 1.8 / .615 / .05; 2.25 / 2.42 / 2.42 / 2.92.
+Holm over the 3 backbones: .021 / .30 / .61. Xception pairwise (exact Wilcoxon, Holm over 6 pairs): pair > fc .009 (11/12), pair > single .034 (10/12), pair vs rank .68 (6/6), others n.s. CLIP/DINO: no pairwise difference after Holm.
+Secondary (uncorrected across metrics): Xception learned filter Friedman p .0004, fc below each other method (Holm .003-.005, fc diag .513 vs .62-.63); DINO learned filter p .015, no pairwise survives Holm; held-out and clean AUC n.s. everywhere except DINO clean rank > fc (Holm .041).
+Reading: pair vs rank is not different on any backbone; single/pair/rank differ only on Xception (pair above single); fc is lower on average but only significantly on Xception (CLIP/DINO fc variance is large). Correction to the earlier wording "feature consistency clearly lower on all three": true for the means, significant only for Xception. Thesis: choose pair as "best or tied mean rank, no extra loss", not "clearly highest".
