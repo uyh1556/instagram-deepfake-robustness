@@ -1014,3 +1014,11 @@ select_nsf_weight_ffpp_val.py 실행(얼굴 검출 FF++ val 원본 11,028장, au
 - rank_weight_check_v2.py dev/select 추가: α ∈ {.25, 1, 2, 4}의 aug_pair_rank seed42 run을 cdf_dev(pool v2 라벨 비테스트, 공식 test 영상 겹치면 중단)에서 4×4(학습 필터 4 × 평가 필터 4, 강 보정) 평가.
 - 사전 등록 규칙: score(α) = 세 백본의 16칸 평균 최저 교차 AUC의 평균. 최고 α가 .25보다 .005 이상 높을 때만 교체, 아니면 .25 유지. 세 백본 공통 α 하나. alpha_selection.json에 고정(dev 표 해시 포함); test 평가(collect)는 이 파일 없이는 실행되지 않고 dev 표가 바뀌면 멈춤.
 - 사전 해석: 선정 α = .25면 논문 본 실험 유지 + test 민감도 표 추가. 다른 α면 그 α로 교차 순위 seed 43·44(24 run)와 특징 일관성(36 run, λ = 100 고정)을 다시 학습해 4장 표를 교체하고, 제안 방법(동시 증강 + 눈·입)은 α와 무관하므로 그대로. 노트북 학습 셀·폴더는 이전 커밋과 동일(진행 중 run 이어서 학습).
+
+## Paired test pair+NSF vs pair (committee request, 2026-11-23)
+Prof. 백성용 asked whether differences in the comparison tables are noise (no SDs shown). scripts/paired_test_pair_nsf_v2.py (eed3872) on the frozen comparison_rows.csv (headline reproduced to 1e-9); unit = run (4 train filters x seeds 42/43/44 = 12 per backbone), per-run value = mean over its 4 test filters; two-sided paired t / exact Wilcoxon / sign test, Holm over the 3 backbones for all16. Output: Drive evaluations/ffpp_c23_pair_nsf_v2_paired_tests/ (paired_tests.csv, paired_runs.csv).
+all16 worse cross AUC, pair -> pair+NSF, diff mean ± SD (min..max), runs up:
+Xception .490 -> .521, +.031 ± .002 (.028..035), 12/12; CLIP .685 -> .698, +.013 ± .004 (.009..019), 12/12; DINO .633 -> .661, +.029 ± .003 (.026..035), 12/12.
+p_t 2e-14 / 1e-7 / 1e-12; Wilcoxon = sign = .00049 each (minimum possible for n=12); Holm: Wilcoxon/sign .0015, t <= 1.3e-7.
+Held-out and clean AUC also 12/12 on every backbone. Learned filter: 12/12 except CLIP 11/12 (one run -.0007; p_t .0006, Wilcoxon .0015). Secondary metrics are not multiplicity-corrected.
+Reading: the paired difference SD (.002-.004) is far below the seed SD of either method (.01-.017), so the NSF gain is not seed noise even for CLIP (+.013 ~ 1 seed SD). Thesis: report diff ± SD, 12/12 and p (paired t, Wilcoxon, Holm). The four training methods among themselves are still untested (planned: Friedman over the 12 filter x seed blocks).
